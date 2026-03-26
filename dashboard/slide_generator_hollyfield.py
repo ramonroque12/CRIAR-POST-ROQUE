@@ -102,6 +102,154 @@ def ghost_number(img, num_str, accent, bg_color):
         pass
 
 
+# ── CAPA — FUNDO VERDE + HEADLINE BRANCA + BOTÃO ESCURO ──────────────────────
+
+def render_cover(headline, sub="", slide_num=1, total=1):
+    """
+    Capa estilo @trampoComIA: fundo verde vivo, headline branca grande,
+    sub em verde claro, botão escuro 'Deslize agora →'.
+    """
+    img  = Image.new("RGB", (W, H), GREEN)
+    draw = ImageDraw.Draw(img)
+
+    f_handle = fnt("InstrumentSans-Regular.ttf", 28)
+    f_tag    = fnt("InstrumentSans-Regular.ttf", 26)
+    f_title  = fnt("BricolageGrotesque-Bold.ttf", 100)
+    f_sub    = fnt("InstrumentSans-Regular.ttf", 34)
+    f_btn    = fnt("BricolageGrotesque-Bold.ttf", 38)
+
+    cy = 50
+
+    # Handle + contador
+    draw.text((MARGIN, cy), "@roquetrafegopagoo", fill=WHITE, font=f_handle)
+    slide_tag = f"{slide_num}/{total}"
+    draw.text((W - MARGIN - tw(draw, slide_tag, f_tag), cy),
+              slide_tag, fill=(180, 245, 210), font=f_tag)
+    cy += 68
+
+    # Linha separadora sutil
+    draw.line([(MARGIN, cy), (W - MARGIN, cy)], fill=(100, 220, 150), width=1)
+    cy += 46
+
+    # Headline grande branca
+    lines = headline.split("\n") if "\n" in headline else wrap(headline, f_title, W - MARGIN * 2, draw)
+    for line in lines[:3]:
+        draw.text((MARGIN, cy), line, fill=WHITE, font=f_title)
+        cy += 114
+    cy += 20
+
+    # Sub em verde claro
+    if sub:
+        sub_lines = wrap(sub, f_sub, W - MARGIN * 2, draw)[:3]
+        for sl in sub_lines:
+            draw.text((MARGIN, cy), sl, fill=(200, 248, 220), font=f_sub)
+            cy += 46
+        cy += 24
+
+    # Tag do perfil
+    f_tag2 = fnt("InstrumentSans-Regular.ttf", 28)
+    tag_text = "Siga @roquetrafegopagoo no Instagram"
+    draw.text((MARGIN, cy), tag_text, fill=(180, 240, 205), font=f_tag2)
+
+    # Botão escuro "Deslize agora →"
+    btn_text = "Deslize agora \u2192"
+    btn_w    = tw(draw, btn_text, f_btn) + 80
+    btn_h    = 78
+    btn_x    = MARGIN
+    btn_y    = H - 160
+    draw.rounded_rectangle([btn_x, btn_y, btn_x + btn_w, btn_y + btn_h],
+                            radius=39, fill=BLACK)
+    draw.text((btn_x + 40, btn_y + (btn_h - th(draw, btn_text, f_btn)) // 2),
+              btn_text, fill=WHITE, font=f_btn)
+
+    return img
+
+
+# ── CONTENT — FUNDO BRANCO + LISTA TÍTULO+DESC (estilo @trampoComIA) ──────────
+
+def render_trampo_content(headline, items, category="NOVIDADES", slide_num=1, total=1):
+    """
+    Fundo OFF-WHITE limpo, dot verde + categoria, headline bold escura,
+    lista com TITLE bold + desc regular — exatamente o estilo @trampoComIA.
+    """
+    img  = Image.new("RGB", (W, H), OFF_WHITE)
+    draw = ImageDraw.Draw(img)
+
+    # Barra verde no topo
+    draw.rectangle([0, 0, W, 6], fill=GREEN)
+
+    f_handle = fnt("InstrumentSans-Regular.ttf", 26)
+    f_cat    = fnt("InstrumentSans-Regular.ttf", 28)
+    f_title  = fnt("BricolageGrotesque-Bold.ttf", 80)
+    f_item_t = fnt("BricolageGrotesque-Bold.ttf", 38)
+    f_item_d = fnt("InstrumentSans-Regular.ttf", 30)
+    f_footer = fnt("InstrumentSans-Regular.ttf", 26)
+    f_tag    = fnt("InstrumentSans-Regular.ttf", 26)
+
+    cy = 36
+
+    # Handle + contador
+    draw.text((MARGIN, cy), "@roquetrafegopagoo", fill=GRAY_DARK, font=f_handle)
+    slide_tag = f"{slide_num}/{total}"
+    draw.text((W - MARGIN - tw(draw, slide_tag, f_tag), cy),
+              slide_tag, fill=GRAY_DARK, font=f_tag)
+    cy += 56
+
+    # Dot verde + categoria
+    DOT_R = 9
+    draw.ellipse([MARGIN, cy + 8, MARGIN + DOT_R * 2, cy + 8 + DOT_R * 2], fill=GREEN)
+    draw.text((MARGIN + DOT_R * 2 + 14, cy), category.upper(), fill=GREEN_DARK, font=f_cat)
+    cy += 54
+
+    # Headline grande escura
+    hl_text = headline.replace("\n", " ")
+    lines   = wrap(hl_text, f_title, W - MARGIN * 2, draw)[:3]
+    for line in lines:
+        draw.text((MARGIN, cy), line, fill=DARK_TEXT, font=f_title)
+        cy += 92
+    cy += 8
+
+    # Separador
+    draw.line([(MARGIN, cy), (W - MARGIN, cy)], fill=(195, 220, 208), width=2)
+    cy += 28
+
+    # Lista de itens: TITLE bold + desc regular
+    visible_items = items[:4] if items else []
+    for idx, item in enumerate(visible_items):
+        title = item.get("title", "")
+        desc  = item.get("desc", "")
+
+        if title:
+            draw.text((MARGIN, cy), title, fill=DARK_TEXT, font=f_item_t)
+            cy += th(draw, title, f_item_t) + 6
+
+        if desc:
+            desc_lines = wrap(desc, f_item_d, W - MARGIN * 2, draw)[:2]
+            for dl in desc_lines:
+                draw.text((MARGIN, cy), dl, fill=GRAY_DARK, font=f_item_d)
+                cy += th(draw, dl, f_item_d) + 4
+            cy += 6
+
+        if idx < len(visible_items) - 1:
+            draw.line([(MARGIN, cy), (W - MARGIN, cy)], fill=(210, 228, 218), width=1)
+            cy += 22
+
+    # Barra de progresso
+    BAR_Y = H - 72
+    BAR_W = W - MARGIN * 2
+    draw.rectangle([MARGIN, BAR_Y, MARGIN + BAR_W, BAR_Y + 5], fill=(210, 228, 218))
+    progress = int(BAR_W * slide_num / max(total, 1))
+    draw.rectangle([MARGIN, BAR_Y, MARGIN + progress, BAR_Y + 5], fill=GREEN)
+
+    # Footer
+    draw.text((MARGIN, H - 48), "@roquetrafegopagoo", fill=GRAY_DARK, font=f_footer)
+    site = "agenciaroque.com.br"
+    draw.text((W - MARGIN - tw(draw, site, f_footer), H - 48),
+              site, fill=GREEN_DARK, font=f_footer)
+
+    return img
+
+
 # ── STYLE A — SOLID BACKGROUND + HEADLINE GRANDE ─────────────────────────────
 
 def render_solid(headline, sub="", bg_color=BLACK, accent=GREEN,
@@ -515,33 +663,40 @@ def generate(config_path):
     total  = len(slides) + 2   # capa + conteúdos + cta
     paths  = []
 
-    # ── Slide 1: CAPA (SOLID escuro) ──────────────────────────────────────────
+    # ── Slide 1: CAPA (fundo verde) ───────────────────────────────────────────
     headline_cover = cfg.get("headline_cover", "A IA mudou tudo\nessa semana.\nVocê viu?")
     sub_cover      = cfg.get("sub_cover", "Resumo para quem trabalha com marketing digital.")
 
-    img = render_solid(
+    img = render_cover(
         headline=headline_cover,
         sub=sub_cover,
-        bg_color=BLACK,
-        accent=GREEN,
         slide_num=1, total=total,
-        show_swipe=True,
     )
     p = os.path.join(out, "slide_01.png")
     img.save(p, "PNG")
     paths.append(p)
-    print("OK slide_01.png [CAPA SOLID DARK]")
+    print("OK slide_01.png [CAPA VERDE]")
 
     # ── Slides de conteúdo ────────────────────────────────────────────────────
     for i, s in enumerate(slides):
         num      = i + 2
-        style    = _choose_style(i)   # 0=SOLID 1=LIST 2=IMPACT
-        headline = s.get("headline", "").replace("\n", " ").strip()
+        headline = s.get("headline", "").strip()
+        items    = s.get("items", [])
+        category = s.get("category", "MARKETING DIGITAL")
         sub      = s.get("sub", "").strip()
 
-        if style == 0:
-            # SOLID escuro — varia o bg a cada conjunto de 3 slides
-            bg_idx = (i // 3) % len(DARK_BG_VARIANTS)
+        if items:
+            # Estilo trampoComIA: fundo branco + lista título+desc
+            img   = render_trampo_content(
+                headline=headline,
+                items=items,
+                category=category,
+                slide_num=num, total=total,
+            )
+            label = f"TRAMPO [{category}] {len(items)} itens"
+        else:
+            # Fallback: slide sólido se não tiver itens estruturados
+            bg_idx = i % len(DARK_BG_VARIANTS)
             img    = render_solid(
                 headline=headline,
                 sub=sub,
@@ -550,30 +705,7 @@ def generate(config_path):
                 slide_num=num, total=total,
                 show_swipe=(num < total),
             )
-            label = f"SOLID bg={DARK_BG_VARIANTS[bg_idx]}"
-
-        elif style == 1:
-            # LIST claro
-            items = _make_list_items(headline, sub)
-            img   = render_list(
-                headline=headline,
-                items=items,
-                category="NOVIDADES",
-                slide_num=num, total=total,
-            )
-            label = "LIST light"
-
-        else:
-            # IMPACT escuro — palavra-chave gigante
-            highlight = _extract_highlight(headline, sub)
-            img       = render_impact(
-                headline=headline,
-                highlight_word=highlight,
-                detail=sub,
-                category="DESTAQUE",
-                slide_num=num, total=total,
-            )
-            label = f"IMPACT [{highlight}]"
+            label = "SOLID fallback"
 
         p = os.path.join(out, f"slide_{num:02d}.png")
         img.save(p, "PNG")

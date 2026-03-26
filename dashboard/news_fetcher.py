@@ -52,10 +52,11 @@ TITLE_KEYWORDS = [
 # independente de ter keyword de IA
 TITLE_BLOCKLIST = [
     # Hardware / gadgets
-    "power bank", "bateria", "carregador", "fone de ouvido", "headphone",
+    "power bank", "powerbank", "bateria", "carregador", "fone de ouvido", "headphone",
     "smartwatch", "tablet", "gpu", "placa de vídeo", "monitor", "teclado",
     "processador", "memória ram", "ssd", "hd externo", "impressora",
     "câmera fotográfica", "drone", "óculos vr", "realidade virtual",
+    "mah", "wh ", "watts",
     # Celulares / marcas
     "samsung", "iphone", "android", "xiaomi", "motorola",
     "pixel ", "galaxy s", "one plus", "redmi",
@@ -66,8 +67,14 @@ TITLE_BLOCKLIST = [
     # Conteúdo de entretenimento / lifestyle
     "netflix", "spotify", "steam", "playstation", "xbox", "nintendo",
     "gasolina", "combustível",
-    # Termos de e-commerce / oferta sem relação com marketing
+    # Termos de e-commerce / oferta
     "em oferta", "menor preço", "melhor custo", "vale a pena comprar",
+    "fique sem", "não fique", "confira", "desconto",
+    # Política sem relação com marketing
+    "trump nomeia", "trump anuncia", "governo federal", "senado", "câmara dos",
+    "ministério", "presidente lula", "eleições",
+    # Assuntos de RH/empregos genéricos sem tech
+    "currículo opcional", "processo seletivo", "vaga de emprego",
 ]
 
 # Queries para Google News RSS — focadas no nicho
@@ -365,16 +372,18 @@ def fetch_news_batch(max_items=6, exclude_keys=None):
         print("[NEWS] Pool esgotado — retornando sem filtro de exclusao.")
         fresh = items
 
+    # Double-check: garante que nada do blocklist escapou
+    fresh = [it for it in fresh if is_relevant(it["headline"])]
+
     random.shuffle(fresh)
     return fresh[:max_items]
 
 
 def enrich_slides_with_ai(news_items):
     """
-    Usa Claude para transformar notícias brutas (qualquer idioma) em slides
-    de carrossel completos em PT-BR, focados em tráfego pago e IA aplicada.
-    Retorna os mesmos itens com headline e sub reescritos.
-    Se não houver API key ou falhar, retorna os itens originais.
+    Usa Claude para transformar notícias brutas em slides educativos estilo
+    @trampoComIA: cada slide tem tema, headline impactante e lista de itens
+    com título bold + descrição prática (não apenas manchetes).
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
@@ -386,36 +395,44 @@ def enrich_slides_with_ai(news_items):
         client = anthropic.Anthropic(api_key=api_key)
 
         news_text = "\n".join([
-            f"{i+1}. TITULO: {it['headline']}\n   DESCRICAO: {(it.get('sub') or '')[:200]}"
+            f"{i+1}. {it['headline']}\n   {(it.get('sub') or '')[:200]}"
             for i, it in enumerate(news_items)
         ])
 
-        prompt = f"""Você é especialista em tráfego pago e inteligência artificial, criador de carrosséis virais para gestores de anúncios e afiliados brasileiros.
+        prompt = f"""Você é uma agência de marketing digital de alto nível criando carrosséis virais para o Instagram @roquetrafegopago.
 
-Transforme as {len(news_items)} notícias abaixo em slides de carrossel Instagram em PORTUGUÊS BRASILEIRO.
+ESTILO DE REFERÊNCIA: @trampoComIA no TikTok — slides educativos, texto grande, sem fotos, fundo limpo.
+Cada slide ENSINA algo prático, não apenas repassa uma manchete.
 
-Regras obrigatórias:
-- Sempre em PT-BR, mesmo se a notícia for em inglês
-- Foco no IMPACTO PRÁTICO para quem roda Meta Ads, Google Ads, TikTok Ads
-- headline: máx 8 palavras, impactante, pode usar \\n para quebrar em 2-3 linhas
-- sub: 2 frases curtas e diretas explicando O QUE MUDA para gestores de tráfego
-- Linguagem de quem está por dentro do mercado, sem ser genérico
-- Use dados/números quando existirem nas notícias
+Com base nas {len(news_items)} notícias abaixo, crie {len(news_items)} slides de carrossel em PT-BR.
+
+ESTRUTURA DE CADA SLIDE:
+- category: categoria em caps máx 3 palavras (ex: "META ADS", "GOOGLE ADS", "IA NO TRAMPO", "OPENAI AGORA")
+- headline: frase de impacto em 5-8 palavras, pode usar \\n para quebrar em 2-3 linhas. Ex: "O que a Meta\\nlançou de verdade."
+- items: lista de 3 a 4 pontos explicativos, cada um com:
+  - title: nome curto e direto, máx 4 palavras (ex: "Advantage+ Criativo", "Copy Automática")
+  - desc: explicação prática em 1 frase de até 15 palavras, linguagem direta para gestor de tráfego
+
+REGRAS:
+- Sempre PT-BR mesmo se a notícia for em inglês
+- Foco no IMPACTO PRÁTICO — o que o gestor vai fazer diferente depois de ler
+- Seja específico, use números quando existirem nas notícias
+- Linguagem de quem está por dentro do mercado digital
+- NÃO repita a manchete, ENSINE o conceito por trás dela
 
 Notícias:
 {news_text}
 
-Retorne APENAS um array JSON válido, sem markdown, sem explicações:
-[{{"headline": "...", "sub": "..."}}, ...]"""
+Retorne APENAS JSON válido, sem markdown:
+[{{"category":"...","headline":"...","items":[{{"title":"...","desc":"..."}}]}}]"""
 
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=2048,
+            max_tokens=3000,
             messages=[{"role": "user", "content": prompt}]
         )
 
         raw = message.content[0].text.strip()
-        # Remove possível markdown code block
         raw = re.sub(r'^```(?:json)?\s*', '', raw)
         raw = re.sub(r'\s*```$', '', raw)
         enriched = json.loads(raw)
@@ -424,6 +441,8 @@ Retorne APENAS um array JSON válido, sem markdown, sem explicações:
             if i < len(enriched):
                 item["headline"] = enriched[i].get("headline", item["headline"])
                 item["sub"]      = enriched[i].get("sub", item.get("sub", ""))
+                item["category"] = enriched[i].get("category", "MARKETING DIGITAL")
+                item["items"]    = enriched[i].get("items", [])
 
         print(f"[ENRICH] {len(enriched)} slides enriquecidos com Claude.")
         return news_items
@@ -465,7 +484,8 @@ def build_carousel_config(news_items, output_dir, date_str):
         slides.append({
             "headline":  hl,
             "sub":       sub,
-            "image_url": it.get("image_url"),
+            "category":  it.get("category", "MARKETING DIGITAL"),
+            "items":     it.get("items", []),
         })
 
     AIDA_COVERS = [

@@ -7,9 +7,10 @@ echo.
 
 cd /d "%~dp0"
 
-REM ── CONFIGURE SUA CHAVE ANTHROPIC AQUI ──────────────────────────────────────
-REM Substitua SUA_CHAVE_AQUI pela sua chave de https://console.anthropic.com
-set ANTHROPIC_API_KEY=SUA_CHAVE_AQUI
+REM ── Carrega chave do arquivo .env (nao commitar .env no git) ─────────────────
+for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
+    if "%%A"=="ANTHROPIC_API_KEY" set ANTHROPIC_API_KEY=%%B
+)
 REM ─────────────────────────────────────────────────────────────────────────────
 
 REM Instala dependencias se necessario
