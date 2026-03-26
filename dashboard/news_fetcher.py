@@ -329,7 +329,7 @@ def fetch_news_batch(max_items=6, exclude_keys=None):
 
     if len(items) < max_items:
         print(f"[NEWS] {len(items)} nos feeds diretos. Complementando com Google News...")
-        extra = fetch_from_google_news(pool_size - len(items))
+        extra = fetch_from_google_news(max_items - len(items))
         existing = {it["headline"][:35].lower() for it in items}
         for ex in extra:
             if ex["headline"][:35].lower() not in existing:
@@ -347,14 +347,8 @@ def fetch_news_batch(max_items=6, exclude_keys=None):
         print("[NEWS] Pool esgotado — retornando sem filtro de exclusao.")
         fresh = items
 
-    # Prioriza artigos COM imagem (evita carrossel todo sem foto)
-    with_img    = [it for it in fresh if it.get("image_url")]
-    without_img = [it for it in fresh if not it.get("image_url")]
-    random.shuffle(with_img)
-    random.shuffle(without_img)
-    prioritized = with_img + without_img
-
-    return prioritized[:max_items]
+    random.shuffle(fresh)
+    return fresh[:max_items]
 
 def build_carousel_config(news_items, output_dir, date_str):
     """Converte lista de noticias no formato de config do slide generator."""
