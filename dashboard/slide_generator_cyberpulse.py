@@ -202,7 +202,7 @@ def render_content(headline, items, category="IA NO TRAMPO", slide_num=2, total=
     cy += 18
 
     # Calcular altura dos cards para preencher bem o espaço
-    n         = len(items[:4])
+    n         = max(1, len(items[:4]))
     spacing   = 14
     avail     = H - cy - 90   # deixa 90px pro rodapé
     card_h    = min(180, (avail - spacing*(n-1)) // n)
