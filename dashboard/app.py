@@ -323,20 +323,45 @@ def upload_image(file_path):
         print(f"[UPLOAD ERROR] {e}")
     return None
 
+CAPTION_LIMITS = {
+    "instagram": 2100,
+    "tiktok":    2100,
+    "threads":   480,
+    "facebook":  60000,
+    "reddit":    40000,
+}
+
+def _trim_caption(caption, limit):
+    if len(caption) <= limit:
+        return caption
+    # Corta no último parágrafo completo antes do limite
+    cut = caption[:limit].rfind("\n\n")
+    if cut > limit // 2:
+        return caption[:cut].strip() + "\n\n..."
+    return caption[:limit - 3].strip() + "..."
+
 def publish_to_zernio(image_urls, caption, platforms):
     headers = {
         "Authorization": f"Bearer {ZERNIO_KEY}",
         "Content-Type": "application/json"
     }
-    platforms_payload = [
-        {"platform": p, "accountId": PLATFORM_IDS[p]}
-        for p in platforms if p in PLATFORM_IDS
-    ]
+
+    platforms_payload = []
+    for p in platforms:
+        if p not in PLATFORM_IDS:
+            continue
+        limit = CAPTION_LIMITS.get(p, 2100)
+        platforms_payload.append({
+            "platform":  p,
+            "accountId": PLATFORM_IDS[p],
+            "content":   _trim_caption(caption, limit),
+        })
+
     if not platforms_payload:
         return {"error": "No valid platforms selected"}
 
     payload = {
-        "content": caption,
+        "content": _trim_caption(caption, 2100),
         "mediaItems": [{"type": "image", "url": u} for u in image_urls],
         "platforms": platforms_payload,
         "publishNow": True
