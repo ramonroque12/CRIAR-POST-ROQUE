@@ -450,15 +450,15 @@ def _is_slide_valid(s):
 
 def fetch_and_enrich_with_web_search(max_items=6, exclude_keys=None):
     """
-    Usa Claude Sonnet com web_search para buscar notícias em tempo real E gerar
-    conteúdo estruturado para slides + legenda em uma única chamada.
-    Retorna (news_items, ai_caption). Fallback para RSS se falhar.
+    PASSO 1: Claude + web_search busca headlines recentes (últimas 48h).
+    PASSO 2: Claude sem web_search enriquece com items/caption estruturados.
+    Fallback para RSS se falhar.
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         print("[WEB SEARCH] Sem API key — usando RSS fallback.")
         news = fetch_news_batch(max_items, exclude_keys)
-        return news, ""
+        return enrich_slides_with_ai(news)
 
     exclude_keys = exclude_keys or set()
     avoid = ", ".join(list(exclude_keys)[:15]) if exclude_keys else "nenhum"
@@ -467,88 +467,79 @@ def fetch_and_enrich_with_web_search(max_items=6, exclude_keys=None):
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
 
-        prompt = f"""Você cria carrosséis educativos para o Instagram @roquetrafegopagoo — conta profissional de marketing digital e tráfego pago.
+        # ── PASSO 1: busca de headlines via web_search ─────────────────────────
+        search_prompt = f"""Você é um curador de notícias de marketing digital e inteligência artificial.
 
-PASSO 1 — Busque na web AGORA as {max_items} notícias mais recentes (últimas 48h) sobre:
-• Novidades de ferramentas de IA: ChatGPT, Claude, Gemini, Copilot, Perplexity, Grok
-• Meta Ads / Facebook Ads: atualizações, Advantage+, automações
-• Google Ads: Performance Max, Smart Bidding, novidades
-• TikTok Ads, LinkedIn Ads: recursos com IA
-• IA aplicada a marketing digital, agentes de IA, automação de campanhas
+Busque na web as {max_items} notícias MAIS RECENTES (últimas 48 horas) sobre:
+• Atualizações de ChatGPT, Claude, Gemini, Copilot, Grok — funcionalidades novas
+• Meta Ads / Advantage+ / Facebook Ads — mudanças e automações
+• Google Ads / Performance Max / Smart Bidding — novidades
+• TikTok Ads ou LinkedIn Ads com IA
+• Ferramentas de IA para marketing digital e tráfego pago
+• Agentes de IA aplicados a negócios e campanhas
 
-REGRAS RÍGIDAS — descarte qualquer notícia que:
-✗ Esteja em inglês (TODOS os slides devem ser 100% PT-BR)
-✗ Trate de conteúdo adulto, erótico ou modo adulto de qualquer app
-✗ Seja duplicada ou muito parecida com outra já na lista
-✗ Fale de gadgets, celulares, eleições, cripto, Black Friday, ofertas
-✗ Seja lista genérica ("X alternativas ao ChatGPT") sem notícia real
-✗ Já foi mostrada recentemente: {avoid}
+DESCARTE qualquer notícia sobre:
+✗ Conteúdo adulto, erótico, "modo adulto", comportamento de chatbot
+✗ Anime, entretenimento, cultura pop
+✗ Gadgets, smartphones, hardware
+✗ Eleições, política, governo
+✗ Criptomoedas, NFT
+✗ Listas genéricas sem notícia real ("X ferramentas que...")
+✗ Temas repetidos: {avoid}
+✗ Notícias em inglês (quero só fontes em PT-BR ou que tenham repercussão no Brasil)
 
-PASSO 2 — Para cada notícia válida, crie um slide em PT-BR com:
-• category: CAPS, máx 3 palavras (ex: "OPENAI AGORA", "META ADS", "GOOGLE ADS")
-• headline: frase de impacto 5-8 palavras (pode usar \\n para quebrar em 2 linhas)
-• items: EXATAMENTE 3 pontos explicativos, cada um com:
-  - title: 3-4 palavras diretas
-  - desc: 1-2 frases de 20-28 palavras explicando o IMPACTO PRÁTICO para gestor de tráfego. Seja específico.
+Retorne APENAS JSON válido com a lista de notícias encontradas:
+[{{"headline":"título em PT-BR 5-8 palavras","sub":"resumo do que aconteceu em 1-2 frases em PT-BR"}}]"""
 
-PASSO 3 — Crie uma legenda narrativa para o post:
-• Abertura impactante
-• 1 parágrafo por notícia (impacto prático para gestores)
-• Fechamento com CTA
-• SEM hashtags
-
-Retorne APENAS JSON válido (sem markdown, sem texto fora do JSON):
-{{"caption":"...","slides":[{{"category":"...","headline":"...","items":[{{"title":"...","desc":"..."}}]}}]}}"""
-
-        message = client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=6000,
+        msg1 = client.messages.create(
+            model="claude-sonnet-4-5-20251022",
+            max_tokens=2000,
             tools=[{"type": "web_search_20250305", "name": "web_search"}],
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": search_prompt}]
         )
 
-        # Extrai texto final (ignora blocos de tool_use e tool_result)
-        text = ""
-        for block in message.content:
+        text1 = ""
+        for block in msg1.content:
             if hasattr(block, "type") and block.type == "text":
-                text += block.text
+                text1 += block.text
 
-        text = text.strip()
-        text = re.sub(r'^```(?:json)?\s*', '', text)
-        text = re.sub(r'\s*```$', '', text)
-        # Extrai apenas o JSON se vier com texto antes/depois
-        m = re.search(r'\{.*\}', text, re.DOTALL)
+        text1 = text1.strip()
+        text1 = re.sub(r'^```(?:json)?\s*', '', text1)
+        text1 = re.sub(r'\s*```$', '', text1)
+        m = re.search(r'\[.*\]', text1, re.DOTALL)
         if m:
-            text = m.group(0)
+            text1 = m.group(0)
 
-        result     = json.loads(text)
-        slides_raw = result.get("slides", [])
-        ai_caption = result.get("caption", "")
+        raw_news = json.loads(text1)
 
-        # Valida e filtra slides inválidos
-        slides_raw = [s for s in slides_raw if _is_slide_valid(s)]
+        # Filtra conteúdo impróprio/inglês
+        clean_news = []
+        for n in raw_news:
+            hl = n.get("headline", "")
+            hl_low = hl.lower()
+            if any(b in hl_low for b in _CONTENT_BLOCKLIST):
+                print(f"[FILTER] Bloqueado: {hl[:50]}")
+                continue
+            en_words = {"the","and","for","that","this","with","from","yet",
+                        "another","side","quest","erotic","mode","says","report",
+                        "abandons","using","yet","new","how","why","what"}
+            if len(set(hl_low.split()) & en_words) >= 2:
+                print(f"[FILTER] Inglês bloqueado: {hl[:50]}")
+                continue
+            clean_news.append({"headline": hl, "sub": n.get("sub",""), "image_url": None})
 
-        if not slides_raw:
-            raise ValueError("Nenhum slide válido após filtragem — usando RSS fallback.")
+        if not clean_news:
+            raise ValueError("Nenhuma notícia válida encontrada.")
 
-        news_items = []
-        for s in slides_raw[:max_items]:
-            news_items.append({
-                "headline":   s.get("headline", ""),
-                "sub":        "",
-                "image_url":  None,
-                "source_url": "",
-                "category":   s.get("category", "MARKETING DIGITAL"),
-                "items":      s.get("items", []),
-            })
+        print(f"[WEB SEARCH] {len(clean_news)} headlines válidas encontradas.")
 
-        print(f"[WEB SEARCH] {len(news_items)} slides válidos gerados.")
-        return news_items, ai_caption
+        # ── PASSO 2: enriquece com items estruturados + caption ─────────────────
+        return enrich_slides_with_ai(clean_news[:max_items])
 
     except Exception as e:
         print(f"[WEB SEARCH ERROR] {e} — usando RSS fallback.")
         news = fetch_news_batch(max_items, exclude_keys)
-        return news, ""
+        return enrich_slides_with_ai(news)
 
 
 def enrich_slides_with_ai(news_items):
