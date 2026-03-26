@@ -239,6 +239,16 @@
   /* Gradient top bar */
   .grad-bar { height: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); }
 
+  /* ── TABS ── */
+  .tab-row { display: flex; gap: 6px; margin-bottom: 18px; }
+  .tab-btn {
+    padding: 7px 16px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg3); color: var(--gray); font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all .15s;
+  }
+  .tab-btn:hover { color: var(--white); border-color: var(--gray); }
+  .tab-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
   /* Scrollbar */
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -397,33 +407,57 @@
       </div>
     </div>
 
-    <!-- STEP 1: Temas ao vivo -->
+    <!-- STEP 1: Tema -->
     <div id="panel-step1">
-      <!-- Loading -->
-      <div id="topics-loading" style="text-align:center;padding:32px 0">
-        <div class="spinner" style="width:32px;height:32px;border-width:3px;margin:0 auto 14px"></div>
-        <p style="color:var(--gray);font-size:13px">Buscando notícias atuais sobre IA...</p>
+      <!-- Tabs -->
+      <div class="tab-row">
+        <button class="tab-btn active" id="tab-btn-live" onclick="switchTab('live')">📰 Notícias ao Vivo</button>
+        <button class="tab-btn" id="tab-btn-themes" onclick="switchTab('themes')">🎯 Temas Prontos</button>
       </div>
-      <!-- Lista de noticias -->
-      <div id="topics-loaded" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <div>
-            <span class="theme-tag" style="color:var(--accent)">● AO VIVO</span>
-            <span style="font-size:12px;color:var(--gray);margin-left:8px" id="topics-date"></span>
-          </div>
-          <button class="btn btn-ghost btn-sm" onclick="fetchLiveTopics()" style="font-size:12px">↻ Buscar novos</button>
+
+      <!-- ── TAB: AO VIVO ── -->
+      <div id="tab-live">
+        <!-- Loading -->
+        <div id="topics-loading" style="text-align:center;padding:32px 0">
+          <div class="spinner" style="width:32px;height:32px;border-width:3px;margin:0 auto 14px"></div>
+          <p style="color:var(--gray);font-size:13px">Buscando notícias atuais sobre IA...</p>
         </div>
-        <div id="news-preview-list"></div>
+        <!-- Lista de noticias -->
+        <div id="topics-loaded" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <div>
+              <span class="theme-tag" style="color:var(--accent)">● AO VIVO</span>
+              <span style="font-size:12px;color:var(--gray);margin-left:8px" id="topics-date"></span>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="fetchLiveTopics()" style="font-size:12px">↻ Buscar novos</button>
+          </div>
+          <div id="news-preview-list"></div>
+          <div style="display:flex;justify-content:flex-end;margin-top:14px">
+            <button class="btn btn-primary" id="btn-generate" onclick="generateSlides()">
+              Gerar Slides →
+            </button>
+          </div>
+        </div>
+        <!-- Erro -->
+        <div id="topics-error" style="display:none;text-align:center;padding:24px;color:var(--red)">
+          <p id="topics-error-msg" style="margin-bottom:12px">Erro ao buscar notícias.</p>
+          <button class="btn btn-ghost btn-sm" onclick="fetchLiveTopics()">Tentar novamente</button>
+        </div>
+      </div>
+
+      <!-- ── TAB: TEMAS PRONTOS ── -->
+      <div id="tab-themes" style="display:none">
+        <div class="themes-grid" id="themes-grid">
+          <div style="text-align:center;padding:32px 0;grid-column:1/-1">
+            <div class="spinner" style="width:32px;height:32px;border-width:3px;margin:0 auto 12px"></div>
+            <p style="color:var(--gray);font-size:13px">Carregando temas...</p>
+          </div>
+        </div>
         <div style="display:flex;justify-content:flex-end;margin-top:14px">
-          <button class="btn btn-primary" id="btn-generate" onclick="generateSlides()">
+          <button class="btn btn-primary" id="btn-generate-theme" onclick="generateSlides()" disabled>
             Gerar Slides →
           </button>
         </div>
-      </div>
-      <!-- Erro -->
-      <div id="topics-error" style="display:none;text-align:center;padding:24px;color:var(--red)">
-        <p id="topics-error-msg" style="margin-bottom:12px">Erro ao buscar notícias.</p>
-        <button class="btn btn-ghost btn-sm" onclick="fetchLiveTopics()">Tentar novamente</button>
       </div>
     </div>
 
@@ -495,6 +529,7 @@ const API = '';
 let posts = [];
 let currentPostId = null;
 let currentTopicData = null;
+let currentThemeId = null;
 let calYear, calMonth;
 let autopilotOn = false;
 
@@ -551,6 +586,45 @@ function updateAutopilotBadge() {
     el.textContent = '● PILOTO AUTO OFF';
     el.classList.remove('on');
   }
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  ['live', 'themes'].forEach(t => {
+    document.getElementById(`tab-${t}`).style.display = t === name ? 'block' : 'none';
+    document.getElementById(`tab-btn-${t}`).classList.toggle('active', t === name);
+  });
+  if (name === 'themes') loadThemes();
+}
+
+let _themesLoaded = false;
+async function loadThemes() {
+  if (_themesLoaded) return;
+  try {
+    const r = await fetch('/api/themes');
+    const themes = await r.json();
+    _themesLoaded = true;
+    const grid = document.getElementById('themes-grid');
+    grid.innerHTML = themes.map(t => `
+      <div class="theme-card" onclick="selectTheme('${t.id}', this)" data-id="${t.id}">
+        <div class="theme-tag" style="color:${t.color}">${t.label}</div>
+        <div class="theme-topic">${t.topic}</div>
+      </div>
+    `).join('');
+    // Store full theme data for caption building
+    window._themesData = themes;
+  } catch(e) {
+    document.getElementById('themes-grid').innerHTML =
+      `<p style="color:var(--red);grid-column:1/-1;padding:20px 0">Erro ao carregar temas.</p>`;
+  }
+}
+
+function selectTheme(id, el) {
+  document.querySelectorAll('#themes-grid .theme-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  currentThemeId = id;
+  currentTopicData = (window._themesData || []).find(t => t.id === id) || null;
+  document.getElementById('btn-generate-theme').disabled = false;
 }
 
 // ── Live Topics ───────────────────────────────────────────────────────────────
@@ -736,10 +810,13 @@ function renderCalendar() {
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 function openModal() {
-  currentPostId   = null;
+  currentPostId    = null;
   currentTopicData = null;
+  currentThemeId   = null;
   document.getElementById('modal-alert').className   = 'alert';
   document.getElementById('modal-alert').textContent = '';
+  // Reset tab to live
+  switchTab('live');
   goStep(1);
   document.getElementById('modal-bg').classList.add('open');
   // Set default schedule datetime to tomorrow 19:00
@@ -785,14 +862,14 @@ function buildCaption(topic) {
 
 // ── Generate ──────────────────────────────────────────────────────────────────
 async function generateSlides() {
-  if (!currentTopicData) return;
+  if (!currentTopicData && !currentThemeId) return;
   goStep(2);
 
   const preview = document.getElementById('slides-preview');
   const status  = document.getElementById('gen-status');
   const fill    = document.getElementById('progress-fill');
   const btnNext = document.getElementById('btn-next-publish');
-  const nSlides = (currentTopicData.slides || []).length + 2;
+  const nSlides = currentTopicData ? (currentTopicData.slides || []).length + 2 : 8;
 
   preview.innerHTML = Array(nSlides).fill('<div class="slide-thumb loading">⏳</div>').join('');
   status.textContent = 'Baixando imagens e gerando slides...';
@@ -800,10 +877,14 @@ async function generateSlides() {
   fill.style.background = '';
   btnNext.disabled = true;
 
+  const reqBody = currentThemeId && !currentTopicData
+    ? { theme_id: currentThemeId }
+    : { topic_data: currentTopicData };
+
   try {
     const r = await fetch('/api/generate', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ topic_data: currentTopicData })
+      body: JSON.stringify(reqBody)
     });
     const data = await r.json();
     if (data.error) throw new Error(data.error);

@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-news_fetcher.py - Busca noticias sobre IA e Marketing Digital
-Prioriza feeds RSS diretos de portais tech BR (com imagens reais).
-Fallback: Google News RSS.
+news_fetcher.py - Busca noticias sobre Tráfego Pago + IA
+Fontes: feeds RSS diretos + Google News RSS.
+Filtro estrito: apenas artigos de marketing digital / IA aplicada.
+Enriquecimento via Claude API: transforma headlines crus em slides PT-BR completos.
 """
-import re, requests, random, unicodedata
+import os, re, requests, random, unicodedata, json
 from xml.etree import ElementTree
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -12,43 +13,69 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
 
-# Feeds RSS diretos de portais tech BR — incluem imagens nos itens
+# Feeds RSS diretos — tech BR + marketing digital
 DIRECT_FEEDS = [
     "https://tecnoblog.net/feed/",
     "https://www.canaltech.com.br/rss/",
     "https://olhardigital.com.br/feed/",
     "https://www.tecmundo.com.br/rss.xml",
     "https://forbes.com.br/feed/",
+    "https://resultadosdigitais.com.br/feed/",
+    "https://searchengineland.com/feed",
+    "https://searchenginejournal.com/feed",
 ]
 
-# Palavras-chave para filtrar noticias relevantes do nicho
-# Regra: pelo menos UMA keyword precisa estar no TITULO (mais restritivo)
+# Palavras-chave FORTES — pelo menos UMA deve estar no TÍTULO para passar
+# Removidas as genéricas curtas (" ia ", "de ia", etc.) que causavam falsos positivos
 TITLE_KEYWORDS = [
+    # IA — termos fortes e específicos
     "inteligência artificial", "inteligencia artificial",
     "chatgpt", "openai", "anthropic", "gemini", "copilot",
-    "gpt-4", "gpt-5", "gpt4", "gpt5", "llm",
-    "marketing digital", "tráfego pago", "trafego pago",
-    "meta ads", "google ads", "tiktok ads",
-    "deepseek", "deep seek", "claude ia", "perplexity",
-    "sam altman", "jensen huang",
-    "automação com ia", "ia no marketing", "ia para",
-    "com ia", "usa ia", "de ia", "e ia", "por ia",
-    " ia ", "(ia)", "ia:",
+    "gpt-4", "gpt-5", "gpt4", "gpt5", "llm", "deepseek",
+    "claude ai", "perplexity", "midjourney", "stable diffusion",
+    "sam altman", "jensen huang", "grok", "mistral",
+    # Plataformas de Tráfego Pago — termos fortes
+    "meta ads", "facebook ads", "instagram ads",
+    "google ads", "tiktok ads", "youtube ads",
+    "performance max", "advantage+", "smart bidding",
+    "tráfego pago", "trafego pago",
+    # Marketing Digital + IA — combinações específicas
+    "marketing digital", "ia no marketing", "ia para marketing",
+    "automação com ia", "criativo com ia", "copy com ia",
+    "anúncio com ia", "campanha com ia",
+    # IA aplicada a negócios
+    "ia generativa", "inteligência generativa",
+    "agente de ia", "agentes de ia",
 ]
 
-# Títulos que contenham essas palavras são ignorados mesmo que batam uma keyword curta
+# Títulos com qualquer um desses termos são SEMPRE bloqueados
+# independente de ter keyword de IA
 TITLE_BLOCKLIST = [
-    "whatsapp", "samsung", "iphone", "android", "xiaomi", "motorola",
-    "windows 11", "windows 10", "gasolina", "combustível", "celular",
-    "notebook", "processador", "placa de vídeo", "monitor", "teclado",
+    # Hardware / gadgets
+    "power bank", "bateria", "carregador", "fone de ouvido", "headphone",
+    "smartwatch", "tablet", "gpu", "placa de vídeo", "monitor", "teclado",
+    "processador", "memória ram", "ssd", "hd externo", "impressora",
+    "câmera fotográfica", "drone", "óculos vr", "realidade virtual",
+    # Celulares / marcas
+    "samsung", "iphone", "android", "xiaomi", "motorola",
+    "pixel ", "galaxy s", "one plus", "redmi",
+    # OS / Software genérico
+    "windows 11", "windows 10", "macos",
+    # Crypto / finanças fora do nicho
+    "bitcoin", "ethereum", "criptomoeda", "nft", "blockchain",
+    # Conteúdo de entretenimento / lifestyle
+    "netflix", "spotify", "steam", "playstation", "xbox", "nintendo",
+    "gasolina", "combustível",
+    # Termos de e-commerce / oferta sem relação com marketing
+    "em oferta", "menor preço", "melhor custo", "vale a pena comprar",
 ]
 
-# Google News RSS como complemento/fallback
-GOOGLE_RSS = "https://news.google.com/rss/search?q={q}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
+# Queries para Google News RSS — focadas no nicho
 GOOGLE_QUERIES = [
-    "inteligencia artificial marketing digital novidades",
-    "ChatGPT OpenAI IA 2026",
-    "Meta Google IA noticias semana",
+    "tráfego pago inteligência artificial Meta Ads Google Ads 2026",
+    "ChatGPT OpenAI marketing digital novidades 2026",
+    "Meta Ads Google Ads IA automação novidades",
+    "inteligência artificial marketing digital afiliados",
 ]
 
 NAMESPACES = {
@@ -57,30 +84,27 @@ NAMESPACES = {
     "dc":      "http://purl.org/dc/elements/1.1/",
 }
 
+GOOGLE_RSS = "https://news.google.com/rss/search?q={q}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
+
+
 def _norm(s):
-    """Normaliza string para comparação fuzzy (remove acentos, pontuação, lowercase)."""
     s = unicodedata.normalize('NFKD', (s or '').lower())
     s = re.sub(r'[^a-z0-9 ]', '', s)
     return re.sub(r' +', ' ', s).strip()
 
+
 def clean_desc(desc, title=""):
-    """Limpa lixo do final da descrição (site name, letra solta, 'O post', boilerplate, etc.)."""
     if not desc:
         return ""
-    # Remove boilerplate do Forbes/portais no início
     desc = re.sub(r'^Forbes[^\n\.]{0,80}mundo\.?\s*', '', desc, flags=re.IGNORECASE).strip()
     desc = re.sub(r'^(Tecnoblog|Canaltech|TecMundo|Olhar Digital)[^\n\.]{0,60}\.?\s*', '', desc, flags=re.IGNORECASE).strip()
-    # Remove 'O post...' ou 'O pos...' (corte no meio) que aparece no final de itens do Forbes
     desc = re.sub(r'\s+O pos\w*\b.*$', '', desc, flags=re.IGNORECASE).strip()
-    # Remove letras/palavras soltas no final (ex: ". W", ", A")
     desc = re.sub(r'[\s,\.]+\b[A-Z]\b\s*$', '', desc).strip()
-    # Remove nome do site no final (2+ espaços + palavra maiúscula curta)
     desc = re.sub(r'\s{2,}[A-Z][a-z]{2,30}(\s[A-Z][a-z]{2,20})*\s*$', '', desc).strip()
-    # Remove se termina em preposição/artigo solto
     desc = re.sub(r'\s+(para|de|do|da|em|com|por|e|o|a|os|as|um|uma)\s*$', '', desc, flags=re.IGNORECASE).strip()
-    # Garante que termina em pontuação decente ou palavra
     desc = re.sub(r'[,;\s]+$', '', desc).strip()
     return desc
+
 
 def strip_html(text):
     text = re.sub(r'<[^>]+>', '', text or '')
@@ -90,28 +114,34 @@ def strip_html(text):
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
+
 def clean_title(title):
-    # Remove " - Nome do Site" suffix
     title = re.sub(r'\s*[-|]\s*[^-|]{3,40}$', '', title).strip()
     return title
 
+
 def is_relevant(title, desc=""):
+    """
+    Retorna True SOMENTE se o título contiver pelo menos UMA keyword FORTE
+    E NÃO contiver nenhuma palavra da blocklist.
+    Filtro estrito: preferimos perder artigos bons a mostrar lixo.
+    """
     title_lower = title.lower()
-    # Bloqueia títulos de tech/hardware sem relação com IA/marketing
+    title_norm  = _norm(title)
+
+    # Bloqueia PRIMEIRO — se tem termo bloqueado, recusa sempre
     if any(bl in title_lower for bl in TITLE_BLOCKLIST):
-        # Só passa se tiver keyword forte explícita (não as genéricas de 2-3 chars)
-        strong = ["inteligência artificial", "inteligencia artificial",
-                  "chatgpt", "openai", "anthropic", "gemini", "copilot",
-                  "gpt-4", "gpt-5", "gpt4", "gpt5", "llm", "deepseek",
-                  "marketing digital", "meta ads", "google ads", "tiktok ads"]
-        return any(kw in title_lower for kw in strong)
+        return False
+
+    # Exige pelo menos UMA keyword forte no título
     return any(kw.lower() in title_lower for kw in TITLE_KEYWORDS)
+
 
 _BAD_IMG_HOSTS = ("youtube.com", "youtu.be", "vimeo.com", "dailymotion.com",
                   "facebook.com", "twitter.com", "instagram.com")
 
+
 def _is_valid_img_url(url):
-    """Verifica se a URL e realmente uma imagem (nao embed de video etc)."""
     if not url or not url.startswith("http"):
         return False
     if any(h in url for h in _BAD_IMG_HOSTS):
@@ -120,35 +150,30 @@ def _is_valid_img_url(url):
         return False
     return True
 
+
 def extract_image_from_item(item):
-    """Tenta extrair URL de imagem de um item RSS (media:content, enclosure, etc)."""
-    # Tenta media:content (Tecnoblog, Canaltech, etc.)
     mc = item.find(f"{{{NAMESPACES['media']}}}content")
     if mc is not None:
         url = mc.get("url", "")
         if _is_valid_img_url(url):
             return url
 
-    # Tenta media:thumbnail
     mt = item.find(f"{{{NAMESPACES['media']}}}thumbnail")
     if mt is not None:
         url = mt.get("url", "")
         if _is_valid_img_url(url):
             return url
 
-    # Tenta enclosure (imagem)
     enc = item.find("enclosure")
     if enc is not None:
         url = enc.get("url", "")
         if url and "image" in enc.get("type","").lower() and _is_valid_img_url(url):
             return url
 
-    # Tenta <img src="..."> no description ou content:encoded
     for tag in ["description", f"{{{NAMESPACES['content']}}}encoded"]:
         text = item.findtext(tag, "")
         if not text:
             continue
-        # Prefere data-src (lazy load) sobre src
         for attr in ["data-src", "src"]:
             m = re.search(rf'<img[^>]+{attr}=["\']([^"\']+)["\']', text, re.IGNORECASE)
             if m and _is_valid_img_url(m.group(1)):
@@ -156,15 +181,14 @@ def extract_image_from_item(item):
 
     return None
 
+
 def get_og_image(url, timeout=7):
-    """Scrapa og:image (ou imagem de artigo) de uma URL."""
     try:
         r = requests.get(url, timeout=timeout, headers=HEADERS, allow_redirects=True)
         if "google.com" in r.url:
             return None
         html = r.text[:60000]
 
-        # Padrões meta og:image / twitter:image
         for pat in [
             r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
             r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
@@ -175,7 +199,6 @@ def get_og_image(url, timeout=7):
             if m and _is_valid_img_url(m.group(1)):
                 return m.group(1)
 
-        # Fallback: busca imagens de artigo por dimensoes tipicas (Forbes, etc.)
         imgs = re.findall(
             r'https://[^\s"<>]+(?:860x484|1920x1080|1200x630|1200x800|768x432|800x450)[^\s"<>]*\.(?:jpg|jpeg|png|webp)',
             html, re.IGNORECASE
@@ -188,8 +211,8 @@ def get_og_image(url, timeout=7):
         pass
     return None
 
+
 def fetch_from_direct_feeds(max_items=6):
-    """Busca noticias nos feeds diretos dos portais tech."""
     seen, candidates = set(), []
     feeds = DIRECT_FEEDS[:]
     random.shuffle(feeds)
@@ -219,7 +242,6 @@ def fetch_from_direct_feeds(max_items=6):
                     continue
                 seen.add(key)
 
-                # Tenta pegar imagem direto do RSS (instantaneo)
                 img_url = extract_image_from_item(item)
                 candidates.append({
                     "headline":   title,
@@ -232,7 +254,6 @@ def fetch_from_direct_feeds(max_items=6):
         except Exception as e:
             print(f"[FEED] Erro em {feed_url[:40]}: {e}")
 
-    # Busca og:image em paralelo apenas para os que nao tem imagem do RSS
     need_scrape = [c for c in candidates if c.get("_need_scrape")]
     def _scrape(item):
         img = get_og_image(item["source_url"], timeout=5)
@@ -244,19 +265,17 @@ def fetch_from_direct_feeds(max_items=6):
         with ThreadPoolExecutor(max_workers=8) as ex:
             list(ex.map(_scrape, need_scrape))
 
-    # Loga os que já tinham imagem do RSS
     for c in candidates:
         if c.get("image_url") and not c.get("_need_scrape"):
             print(f"[RSS IMG] {c['headline'][:45]}")
         c.pop("_need_scrape", None)
 
-    # Prioriza com imagem
     with_img    = [c for c in candidates if c.get("image_url")]
     without_img = [c for c in candidates if not c.get("image_url")]
     return (with_img + without_img)[:max_items]
 
+
 def fetch_from_google_news(max_items=6):
-    """Fallback: busca via Google News RSS com scraping paralelo de imagens."""
     seen, candidates = set(), []
     queries = random.sample(GOOGLE_QUERIES, min(2, len(GOOGLE_QUERIES)))
 
@@ -279,6 +298,8 @@ def fetch_from_google_news(max_items=6):
 
                 if not title or len(title) < 15:
                     continue
+                if not is_relevant(title, desc):
+                    continue
                 key = title[:35].lower()
                 if key in seen:
                     continue
@@ -296,7 +317,6 @@ def fetch_from_google_news(max_items=6):
     if not candidates:
         return []
 
-    # Busca imagens em paralelo (timeout curto para não travar)
     def _fetch_img(item):
         link = item["source_url"]
         if link and "google.com" not in link:
@@ -311,20 +331,20 @@ def fetch_from_google_news(max_items=6):
     with ThreadPoolExecutor(max_workers=6) as ex:
         results = list(ex.map(_fetch_img, candidates[:max_items * 2]))
 
-    # Prioriza os com imagem
     with_img    = [it for it in results if it.get("image_url")]
     without_img = [it for it in results if not it.get("image_url")]
     return (with_img + without_img)[:max_items]
 
+
 def fetch_news_batch(max_items=6, exclude_keys=None):
     """
-    Busca noticias sobre IA/Marketing Digital.
-    exclude_keys: set de chaves (headline[:35].lower()) ja mostradas — evita repeticao.
+    Busca noticias sobre Tráfego Pago + IA.
+    Filtro estrito — só passa artigos claramente sobre o nicho.
+    exclude_keys: headlines já mostrados (evita repetição).
     """
     exclude_keys = exclude_keys or set()
 
-    # Busca todos os artigos relevantes dos feeds diretos (com imagens em paralelo)
-    print("[NEWS] Buscando nos feeds diretos...")
+    print("[NEWS] Buscando nos feeds diretos (filtro estrito)...")
     items = fetch_from_direct_feeds(max_items * 3)
 
     if len(items) < max_items:
@@ -336,13 +356,11 @@ def fetch_news_batch(max_items=6, exclude_keys=None):
                 items.append(ex)
                 existing.add(ex["headline"][:35].lower())
 
-    print(f"[NEWS] Pool total: {len(items)} noticias.")
+    print(f"[NEWS] Pool total: {len(items)} noticias relevantes.")
 
-    # Remove os ja mostrados
     fresh = [it for it in items if it["headline"][:35].lower() not in exclude_keys]
     print(f"[NEWS] Fresh (nao mostrados): {len(fresh)}")
 
-    # Se nao tem suficientes, retorna o que tiver (sem restricao)
     if len(fresh) < max_items:
         print("[NEWS] Pool esgotado — retornando sem filtro de exclusao.")
         fresh = items
@@ -350,8 +368,72 @@ def fetch_news_batch(max_items=6, exclude_keys=None):
     random.shuffle(fresh)
     return fresh[:max_items]
 
+
+def enrich_slides_with_ai(news_items):
+    """
+    Usa Claude para transformar notícias brutas (qualquer idioma) em slides
+    de carrossel completos em PT-BR, focados em tráfego pago e IA aplicada.
+    Retorna os mesmos itens com headline e sub reescritos.
+    Se não houver API key ou falhar, retorna os itens originais.
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        print("[ENRICH] ANTHROPIC_API_KEY não encontrada. Usando notícias brutas.")
+        return news_items
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+
+        news_text = "\n".join([
+            f"{i+1}. TITULO: {it['headline']}\n   DESCRICAO: {(it.get('sub') or '')[:200]}"
+            for i, it in enumerate(news_items)
+        ])
+
+        prompt = f"""Você é especialista em tráfego pago e inteligência artificial, criador de carrosséis virais para gestores de anúncios e afiliados brasileiros.
+
+Transforme as {len(news_items)} notícias abaixo em slides de carrossel Instagram em PORTUGUÊS BRASILEIRO.
+
+Regras obrigatórias:
+- Sempre em PT-BR, mesmo se a notícia for em inglês
+- Foco no IMPACTO PRÁTICO para quem roda Meta Ads, Google Ads, TikTok Ads
+- headline: máx 8 palavras, impactante, pode usar \\n para quebrar em 2-3 linhas
+- sub: 2 frases curtas e diretas explicando O QUE MUDA para gestores de tráfego
+- Linguagem de quem está por dentro do mercado, sem ser genérico
+- Use dados/números quando existirem nas notícias
+
+Notícias:
+{news_text}
+
+Retorne APENAS um array JSON válido, sem markdown, sem explicações:
+[{{"headline": "...", "sub": "..."}}, ...]"""
+
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=2048,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        raw = message.content[0].text.strip()
+        # Remove possível markdown code block
+        raw = re.sub(r'^```(?:json)?\s*', '', raw)
+        raw = re.sub(r'\s*```$', '', raw)
+        enriched = json.loads(raw)
+
+        for i, item in enumerate(news_items):
+            if i < len(enriched):
+                item["headline"] = enriched[i].get("headline", item["headline"])
+                item["sub"]      = enriched[i].get("sub", item.get("sub", ""))
+
+        print(f"[ENRICH] {len(enriched)} slides enriquecidos com Claude.")
+        return news_items
+
+    except Exception as e:
+        print(f"[ENRICH ERROR] {e}. Usando notícias brutas.")
+        return news_items
+
+
 def build_carousel_config(news_items, output_dir, date_str):
-    """Converte lista de noticias no formato de config do slide generator."""
     if not news_items:
         return None
 
@@ -360,7 +442,6 @@ def build_carousel_config(news_items, output_dir, date_str):
     slides = []
     for it in news_items:
         hl = it["headline"]
-        # Quebra headline longa em ate 2 linhas
         if len(hl) > 50:
             words = hl.split()
             mid = max(3, len(words) // 2)
@@ -372,11 +453,9 @@ def build_carousel_config(news_items, output_dir, date_str):
 
         if sub:
             sub_norm = _norm(sub)
-            # Se sub começa igual ao título, zera
             if sub_norm[:len(hl_norm)] == hl_norm:
                 sub = ""
             else:
-                # Remove trecho final do sub que repete o título
                 key = hl_norm[:35]
                 idx = sub_norm.rfind(key)
                 if idx > 15:
@@ -389,43 +468,37 @@ def build_carousel_config(news_items, output_dir, date_str):
             "image_url": it.get("image_url"),
         })
 
-    # AIDA covers — rotaciona a cada chamada (Attention → Interest → Desire → Action)
     AIDA_COVERS = [
-        # A — Atenção
         {
-            "headline": "A IA mudou tudo\nessa semana.\nVocê viu?",
-            "sub":      "As notícias que todo mundo de marketing digital precisa saber. Deslize →",
-        },
-        # I — Interesse
-        {
-            "headline": "O que está\nmudando no mundo\nda IA agora.",
-            "sub":      "Resumo semanal para quem trabalha com tráfego pago e marketing digital.",
-        },
-        # D — Desejo
-        {
-            "headline": "Quem entender\nisso agora vai\nficar à frente.",
-            "sub":      "As novidades de IA que estão mudando o jogo do marketing digital em 2026.",
-        },
-        # A — Ação
-        {
-            "headline": "Para de perder\nnotícias de IA.\nVeja o resumo:",
-            "sub":      "Tudo que aconteceu essa semana em IA e marketing digital — em menos de 2 min.",
-        },
-        # Variações extras
-        {
-            "headline": "Foi mais uma\nsemana insana\nno mundo da IA.",
-            "sub":      "Aqui vai o resumo do que você não pode ter perdido.",
+            "headline": "Tráfego Pago +\nIA: o que mudou\nessa semana?",
+            "sub":      "As notícias que todo gestor de tráfego precisa saber antes de rodar campanha. Deslize →",
         },
         {
-            "headline": "IA, marketing\ne dinheiro:\no que mudou?",
-            "sub":      "As notícias da semana que impactam diretamente quem anuncia online.",
+            "headline": "Meta, Google e\nIA: resumo da\nsemana",
+            "sub":      "O que está mudando no tráfego pago com inteligência artificial — e o que fazer agora.",
         },
         {
-            "headline": "Essa semana\na IA surpreendeu\naté quem já sabia.",
-            "sub":      "Novidades de ChatGPT, Meta, Google e mais — resumido para você agir.",
+            "headline": "Quem entender\nisso agora vai\nescalar mais.",
+            "sub":      "Novidades de IA que estão mudando o Meta Ads, Google Ads e o marketing digital em 2026.",
         },
         {
-            "headline": "Você ainda\nestá competindo\ncom quem usa IA?",
+            "headline": "Para de perder\nnotícias de IA\ne tráfego pago.",
+            "sub":      "Tudo que aconteceu essa semana — resumido para você agir em menos de 2 min.",
+        },
+        {
+            "headline": "IA + Tráfego\nPago: o que os\ngestores top usam",
+            "sub":      "Veja o que está funcionando essa semana nos anúncios com inteligência artificial.",
+        },
+        {
+            "headline": "Meta Ads e IA:\no que mudou e\ncomo usar agora",
+            "sub":      "As novidades da semana que impactam diretamente quem anuncia no Meta e Google.",
+        },
+        {
+            "headline": "Essa semana a\nIA surpreendeu\naté os experts.",
+            "sub":      "Novidades de ChatGPT, Meta, Google e mais — resumido para você tomar ação.",
+        },
+        {
+            "headline": "Você ainda\nestá anunciando\nsem IA em 2026?",
             "sub":      "Veja o que os melhores gestores de tráfego estão usando essa semana.",
         },
     ]
@@ -441,11 +514,12 @@ def build_carousel_config(news_items, output_dir, date_str):
         "slides":          slides,
     }
 
+
 if __name__ == "__main__":
     import json
     news = fetch_news_batch(6)
     print("\n=== RESULTADO ===")
     for i, n in enumerate(news, 1):
-        print(f"{i}. {n['headline'][:60]}")
+        print(f"{i}. {n['headline'][:70]}")
         print(f"   sub: {n['sub'][:80]}")
         print(f"   img: {bool(n['image_url'])}")

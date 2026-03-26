@@ -7,7 +7,7 @@ from flask import Flask, render_template, jsonify, request, send_from_directory
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from news_fetcher import fetch_news_batch, build_carousel_config
+from news_fetcher import fetch_news_batch, build_carousel_config, enrich_slides_with_ai
 
 # Rastreia headlines ja mostradas na sessao para evitar repeticao
 _shown_headlines: set = set()
@@ -15,8 +15,18 @@ _SHOWN_MAX = 60  # reseta depois de 60 itens acumulados
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 SLIDES_ROOT = os.path.join(BASE_DIR, "..", "slides")
+
+# Carrega .env automaticamente se existir
+_env_path = os.path.join(BASE_DIR, ".env")
+if os.path.exists(_env_path):
+    with open(_env_path, encoding="utf-8") as _ef:
+        for _line in _ef:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
 DB_PATH     = os.path.join(BASE_DIR, "posts.db")
-GENERATOR   = os.path.join(BASE_DIR, "slide_generator_hollyfield.py")
+GENERATOR   = os.path.join(BASE_DIR, "slide_generator_cyberpulse.py")
 
 ZERNIO_KEY     = "sk_8ce15a5d1c7a69631d059f6b05db4107426d1c40b3d10ef587c5a19bd6cb2b6c"
 INSTAGRAM_ID   = "69c407166cb7b8cf4c9ac812"
@@ -500,7 +510,8 @@ def api_themes():
     return jsonify([{
         "id": t["id"], "topic": t["topic"],
         "label": t["label"], "color": t["color"],
-        "headline_cover": t["headline_cover"]
+        "headline_cover": t["headline_cover"],
+        "slides": t["slides"]
     } for t in THEMES])
 
 @app.route("/api/posts")
@@ -550,9 +561,12 @@ def api_fetch_topics():
         if not news:
             return jsonify({"error": "Nenhuma noticia encontrada"}), 500
 
-        # Registra os headlines retornados para evitar repeticao na proxima chamada
+        # Registra os RAW headlines ANTES do enriquecimento (exclude_keys compara raw)
         for it in news:
             _shown_headlines.add(it["headline"][:35].lower())
+
+        # Enriquece com Claude: gera conteúdo educativo estruturado
+        news = enrich_slides_with_ai(news)
 
         cfg = build_carousel_config(news, "", date_str)
         result = {
