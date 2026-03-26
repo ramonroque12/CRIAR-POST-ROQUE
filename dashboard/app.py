@@ -336,7 +336,7 @@ def publish_to_zernio(image_urls, caption, platforms):
         return {"error": "No valid platforms selected"}
 
     payload = {
-        "text": caption,
+        "content": caption,
         "mediaItems": [{"type": "image", "url": u} for u in image_urls],
         "platforms": platforms_payload,
         "publishNow": True
