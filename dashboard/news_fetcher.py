@@ -421,6 +421,94 @@ def fetch_news_batch(max_items=6, exclude_keys=None):
     return fresh[:max_items]
 
 
+def fetch_and_enrich_with_web_search(max_items=6, exclude_keys=None):
+    """
+    Usa Claude com web_search para buscar notícias em tempo real E gerar
+    conteúdo estruturado para slides + legenda em uma única chamada.
+    Retorna (news_items, ai_caption). Fallback para RSS se falhar.
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        print("[WEB SEARCH] Sem API key — usando RSS fallback.")
+        news = fetch_news_batch(max_items, exclude_keys)
+        return news, ""
+
+    exclude_keys = exclude_keys or set()
+    avoid = ", ".join(list(exclude_keys)[:12]) if exclude_keys else "nenhum"
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+
+        prompt = f"""Você é um especialista em marketing digital e inteligência artificial criando conteúdo para o Instagram @roquetrafegopagoo.
+
+Sua tarefa:
+1. Busque na web as {max_items} notícias MAIS RECENTES (últimas 48-72h) sobre IA aplicada a marketing digital. Priorize:
+   - ChatGPT, OpenAI, Claude, Anthropic, Gemini novidades
+   - Meta Ads, Facebook Ads, Instagram Ads com IA
+   - Google Ads, Performance Max, Smart Bidding
+   - TikTok Ads, automação, ferramentas de IA para anúncios
+   - Lançamentos e atualizações de ferramentas de IA 2026
+
+   EVITE temas já mostrados recentemente: {avoid}
+   EVITE: Black Friday, ofertas, gadgets, política, cripto
+
+2. Para cada notícia, crie um slide educativo em PT-BR:
+   - category: categoria CAPS máx 3 palavras (ex: "META ADS", "OPENAI AGORA", "IA NO TRAMPO")
+   - headline: frase de impacto 5-8 palavras (use \\n para quebrar linhas)
+   - items: 3-4 pontos com:
+     - title: título curto 4 palavras
+     - desc: explicação prática 20-25 palavras — ENSINE o conceito, não repita o título
+
+3. Crie uma legenda narrativa para Instagram:
+   - Gancho forte na primeira linha
+   - 1 parágrafo por notícia explicando o impacto prático para gestores de tráfego
+   - CTA no final (ex: "Salva esse post. 👊")
+   - Sem hashtags (serão adicionadas depois)
+
+Retorne APENAS JSON válido sem markdown:
+{{"caption":"...","slides":[{{"category":"...","headline":"...","items":[{{"title":"...","desc":"..."}}]}}]}}"""
+
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=5000,
+            tools=[{"type": "web_search_20250305", "name": "web_search"}],
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        # Extrai texto final (ignora blocos de tool_use)
+        text = ""
+        for block in message.content:
+            if hasattr(block, "type") and block.type == "text":
+                text += block.text
+
+        text = text.strip()
+        text = re.sub(r'^```(?:json)?\s*', '', text)
+        text = re.sub(r'\s*```$', '', text)
+        result     = json.loads(text)
+        slides_raw = result.get("slides", [])
+        ai_caption = result.get("caption", "")
+
+        news_items = []
+        for s in slides_raw:
+            news_items.append({
+                "headline":  s.get("headline", ""),
+                "sub":       "",
+                "image_url": None,
+                "source_url": "",
+                "category":  s.get("category", "MARKETING DIGITAL"),
+                "items":     s.get("items", []),
+            })
+
+        print(f"[WEB SEARCH] {len(news_items)} slides gerados com web search.")
+        return news_items, ai_caption
+
+    except Exception as e:
+        print(f"[WEB SEARCH ERROR] {e} — usando RSS fallback.")
+        news = fetch_news_batch(max_items, exclude_keys)
+        return news, ""
+
+
 def enrich_slides_with_ai(news_items):
     """
     Usa Claude para transformar notícias brutas em slides educativos e gerar

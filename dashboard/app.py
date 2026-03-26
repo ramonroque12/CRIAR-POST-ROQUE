@@ -7,7 +7,7 @@ from flask import Flask, render_template, jsonify, request, send_from_directory
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from news_fetcher import fetch_news_batch, build_carousel_config, enrich_slides_with_ai
+from news_fetcher import fetch_news_batch, build_carousel_config, enrich_slides_with_ai, fetch_and_enrich_with_web_search
 
 # Rastreia headlines ja mostradas na sessao para evitar repeticao
 _shown_headlines: set = set()
@@ -557,17 +557,18 @@ def api_fetch_topics():
             _shown_headlines = set()
             print("[NEWS] Historico resetado.")
 
-        news = fetch_news_batch(max_items=6, exclude_keys=_shown_headlines)
         date_str = datetime.now().strftime("%d/%m/%Y")
+
+        # Web search + enriquecimento em uma chamada só
+        news, ai_caption = fetch_and_enrich_with_web_search(
+            max_items=6, exclude_keys=_shown_headlines
+        )
         if not news:
             return jsonify({"error": "Nenhuma noticia encontrada"}), 500
 
-        # Registra os RAW headlines ANTES do enriquecimento (exclude_keys compara raw)
+        # Registra headlines para evitar repetição
         for it in news:
             _shown_headlines.add(it["headline"][:35].lower())
-
-        # Enriquece com Claude: gera conteúdo educativo estruturado + caption narrativa
-        news, ai_caption = enrich_slides_with_ai(news)
 
         cfg = build_carousel_config(news, "", date_str, ai_caption=ai_caption)
         result = {
