@@ -872,7 +872,7 @@ async function generateSlides() {
   const nSlides = currentTopicData ? (currentTopicData.slides || []).length + 2 : 8;
 
   preview.innerHTML = Array(nSlides).fill('<div class="slide-thumb loading">⏳</div>').join('');
-  status.textContent = 'Baixando imagens e gerando slides...';
+  status.textContent = 'Gerando slides com IA...';
   fill.style.width = '10%';
   fill.style.background = '';
   btnNext.disabled = true;
@@ -886,26 +886,45 @@ async function generateSlides() {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify(reqBody)
     });
-    const data = await r.json();
-    if (data.error) throw new Error(data.error);
-    if (data.status === 'failed') throw new Error('Geração falhou no servidor');
+    const init = await r.json();
+    if (init.error) throw new Error(init.error);
+    const jobId = init.job_id;
 
-    currentPostId = data.post_id;
-    fill.style.width = '100%';
-    status.textContent = `✓ ${data.slides.length} slides gerados — ${data.topic}`;
-
-    // Mostra thumbnails dos slides
-    const dirName = data.slide_dir.replace(/\\/g,'/').split('/').pop();
-    preview.innerHTML = data.slides.map((f,i) => `
-      <div class="slide-thumb">
-        <img src="/slides/${dirName}/${f}" alt="Slide ${i+1}"
-             onerror="this.parentElement.innerHTML='<span style=font-size:11px>${i+1}</span>'" />
-      </div>
-    `).join('');
-
-    // Preenche legenda no step 3
-    document.getElementById('caption-editor').value = buildCaption(data.topic);
-    btnNext.disabled = false;
+    // Polling até concluir
+    let dots = 0;
+    const labels = ['Gerando slides com IA.','Gerando slides com IA..','Gerando slides com IA...'];
+    const poll = setInterval(async () => {
+      dots = (dots + 1) % 3;
+      fill.style.width = (20 + dots * 25) + '%';
+      status.textContent = labels[dots];
+      try {
+        const sr = await fetch(`/api/generate/${jobId}`);
+        const data = await sr.json();
+        if (data.status === 'done') {
+          clearInterval(poll);
+          currentPostId = data.post_id;
+          fill.style.width = '100%';
+          status.textContent = `✓ ${data.slides.length} slides gerados — ${data.topic}`;
+          const dirName = data.slide_dir.replace(/\\/g,'/').split('/').pop();
+          preview.innerHTML = data.slides.map((f,i) => `
+            <div class="slide-thumb">
+              <img src="/slides/${dirName}/${f}" alt="Slide ${i+1}"
+                   onerror="this.parentElement.innerHTML='<span style=font-size:11px>${i+1}</span>'" />
+            </div>
+          `).join('');
+          document.getElementById('caption-editor').value = buildCaption(data.topic);
+          btnNext.disabled = false;
+        } else if (data.status === 'failed') {
+          clearInterval(poll);
+          throw new Error(data.error || 'Geração falhou');
+        }
+      } catch(pe) {
+        if (pe.message && pe.message !== 'Geração falhou') return; // continua polling em erros de rede
+        clearInterval(poll);
+        status.textContent = '✗ Erro: ' + pe.message;
+        fill.style.background = 'var(--red)';
+      }
+    }, 3000);
   } catch(e) {
     status.textContent = '✗ Erro: ' + e.message;
     fill.style.background = 'var(--red)';

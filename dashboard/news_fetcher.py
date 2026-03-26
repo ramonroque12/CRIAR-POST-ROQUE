@@ -21,8 +21,6 @@ DIRECT_FEEDS = [
     "https://www.tecmundo.com.br/rss.xml",
     "https://forbes.com.br/feed/",
     "https://resultadosdigitais.com.br/feed/",
-    "https://searchengineland.com/feed",
-    "https://searchenginejournal.com/feed",
 ]
 
 # Palavras-chave FORTES — pelo menos UMA deve estar no TÍTULO para passar

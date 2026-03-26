@@ -2,7 +2,7 @@
 """
 Roque Content Hub - Dashboard de Publicação Automática
 """
-import os, sys, json, sqlite3, subprocess, requests
+import os, sys, json, sqlite3, subprocess, requests, threading, uuid
 from flask import Flask, render_template, jsonify, request, send_from_directory
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta
@@ -12,6 +12,9 @@ from news_fetcher import fetch_news_batch, build_carousel_config, enrich_slides_
 # Rastreia headlines ja mostradas na sessao para evitar repeticao
 _shown_headlines: set = set()
 _SHOWN_MAX = 60  # reseta depois de 60 itens acumulados
+
+# Jobs assíncronos de geração
+_jobs: dict = {}
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 SLIDES_ROOT = os.path.join(BASE_DIR, "..", "slides")
@@ -587,24 +590,37 @@ def api_fetch_topics():
 def api_generate():
     data = request.json or {}
 
-    # Novo fluxo: dados de noticias passados diretamente
     if "topic_data" in data:
         cfg_data = data["topic_data"]
     else:
-        # Fluxo legado: tema estatico por ID
         theme_id = data.get("theme_id")
         cfg_data = next((t for t in THEMES if t["id"] == theme_id), THEMES[0])
 
-    try:
-        post_id, slides, slide_dir = do_generate(cfg_data)
-        return jsonify({
-            "post_id":   post_id,
-            "slides":    slides,
-            "slide_dir": slide_dir,
-            "topic":     cfg_data.get("topic", "Carrossel IA")
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    job_id = uuid.uuid4().hex[:10]
+    _jobs[job_id] = {"status": "running"}
+
+    def run():
+        try:
+            post_id, slides, slide_dir = do_generate(cfg_data)
+            _jobs[job_id] = {
+                "status":    "done",
+                "post_id":   post_id,
+                "slides":    slides,
+                "slide_dir": slide_dir,
+                "topic":     cfg_data.get("topic", "Carrossel IA")
+            }
+        except Exception as e:
+            _jobs[job_id] = {"status": "failed", "error": str(e)}
+
+    threading.Thread(target=run, daemon=True).start()
+    return jsonify({"job_id": job_id})
+
+@app.route("/api/generate/<job_id>", methods=["GET"])
+def api_generate_status(job_id):
+    job = _jobs.get(job_id)
+    if not job:
+        return jsonify({"status": "not_found"}), 404
+    return jsonify(job)
 
 @app.route("/api/publish/<int:post_id>", methods=["POST"])
 def api_publish(post_id):
