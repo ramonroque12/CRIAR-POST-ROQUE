@@ -890,15 +890,24 @@ async function generateSlides() {
     if (init.error) throw new Error(init.error);
     const jobId = init.job_id;
 
-    // Polling até concluir
+    // Polling até concluir (timeout 3min)
     let dots = 0;
+    let attempts = 0;
     const labels = ['Gerando slides com IA.','Gerando slides com IA..','Gerando slides com IA...'];
     const poll = setInterval(async () => {
+      attempts++;
+      if (attempts > 60) { // 3 min
+        clearInterval(poll);
+        status.textContent = '✗ Timeout: geração demorou demais';
+        fill.style.background = 'var(--red)';
+        return;
+      }
       dots = (dots + 1) % 3;
-      fill.style.width = (20 + dots * 25) + '%';
+      fill.style.width = Math.min(20 + attempts * 1.2, 85) + '%';
       status.textContent = labels[dots];
       try {
         const sr = await fetch(`/api/generate/${jobId}`);
+        if (!sr.ok) return; // erro de rede, continua polling
         const data = await sr.json();
         if (data.status === 'done') {
           clearInterval(poll);
@@ -916,13 +925,11 @@ async function generateSlides() {
           btnNext.disabled = false;
         } else if (data.status === 'failed') {
           clearInterval(poll);
-          throw new Error(data.error || 'Geração falhou');
+          status.textContent = '✗ Erro: ' + (data.error || 'Geração falhou');
+          fill.style.background = 'var(--red)';
         }
       } catch(pe) {
-        if (pe.message && pe.message !== 'Geração falhou') return; // continua polling em erros de rede
-        clearInterval(poll);
-        status.textContent = '✗ Erro: ' + pe.message;
-        fill.style.background = 'var(--red)';
+        // erro de rede temporário, continua polling
       }
     }, 3000);
   } catch(e) {
