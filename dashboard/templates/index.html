@@ -850,14 +850,18 @@ function goStep(n) {
 }
 
 // ── Caption ───────────────────────────────────────────────────────────────────
-function buildCaption(topic) {
+function buildCaption(topic, aiCaption) {
+  const footer = `📲 Siga @roquetrafegopagoo para mais!\n🔗 Portal completo: agenciaroque.com.br`;
+  const hashtags = `#MarketingDigital #InteligenciaArtificial #TrafegoPago #MetaAds #GoogleAds #AgenciaRoque`;
+  if (aiCaption && aiCaption.trim()) {
+    return `${aiCaption.trim()}\n\n${footer}\n\n${hashtags}`;
+  }
   const slides = (currentTopicData && currentTopicData.slides) || [];
   const bullets = slides.map(s => {
     const hl = (s.headline || '').replace(/\n/g, ' ').trim();
     return '👉 ' + (hl.length > 68 ? hl.slice(0, 65) + '...' : hl);
   }).join('\n');
-
-  return `${bullets}\n\n📲 Siga @roquetrafegopagoo para mais!\n\nArsenal completo no link da bio 🔗\n\n#MarketingDigital #InteligenciaArtificial #TrafegoPago #MetaAds #GoogleAds #Afiliados #AgenciaRoque`;
+  return `${bullets}\n\n${footer}\n\n${hashtags}`;
 }
 
 // ── Generate ──────────────────────────────────────────────────────────────────
@@ -921,7 +925,7 @@ async function generateSlides() {
                    onerror="this.parentElement.innerHTML='<span style=font-size:11px>${i+1}</span>'" />
             </div>
           `).join('');
-          document.getElementById('caption-editor').value = buildCaption(data.topic);
+          document.getElementById('caption-editor').value = buildCaption(data.topic, data.ai_caption);
           btnNext.disabled = false;
         } else if (data.status === 'failed') {
           clearInterval(poll);

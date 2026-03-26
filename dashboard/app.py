@@ -348,27 +348,21 @@ def publish_to_zernio(image_urls, caption, platforms):
         print(f"[ZERNIO ERROR] {e}")
         return {"error": str(e)}
 
-def build_caption(topic, slides=None):
+def build_caption(topic, slides=None, ai_caption=""):
     hashtags = (
         "#MarketingDigital #InteligenciaArtificial #TrafegoPago "
-        "#MetaAds #GoogleAds #Afiliados #AgenciaRoque"
+        "#MetaAds #GoogleAds #GoogleAds #AgenciaRoque"
     )
+    footer = "📲 Siga @roquetrafegopagoo para mais!\n🔗 Portal completo: agenciaroque.com.br"
+    if ai_caption and ai_caption.strip():
+        return f"{ai_caption.strip()}\n\n{footer}\n\n{hashtags}"
     if slides:
         bullets = "\n".join(
             "👉 " + (s.get("headline","").replace("\n"," ")[:68])
             for s in slides if s.get("headline")
         )
-        return (
-            f"{bullets}\n\n"
-            "📲 Siga @roquetrafegopagoo para mais!\n\n"
-            "Arsenal completo no link da bio 🔗\n\n"
-            f"{hashtags}"
-        )
-    return (
-        f"📲 Siga @roquetrafegopagoo para mais!\n\n"
-        "Arsenal completo no link da bio 🔗\n\n"
-        f"{hashtags}"
-    )
+        return f"{bullets}\n\n{footer}\n\n{hashtags}"
+    return f"{footer}\n\n{hashtags}"
 
 def do_generate(cfg_data):
     """Generate slides from a config dict. Accepts THEMES entry or news-based config."""
@@ -404,7 +398,8 @@ def do_generate(cfg_data):
         post_id = cur.lastrowid
         conn.commit()
 
-    return post_id, slides, out_dir
+    ai_caption = cfg_data.get("ai_caption", "")
+    return post_id, slides, out_dir, ai_caption
 
 def do_publish(post_id, platforms_override=None, caption_override=None):
     """Upload slides and publish via Zernio"""
@@ -432,16 +427,17 @@ def do_publish(post_id, platforms_override=None, caption_override=None):
     if caption_override is not None and caption_override.strip():
         caption = caption_override
     else:
-        # Tenta ler config.json do post para pegar slides
-        cfg_slides = None
+        # Tenta ler config.json do post para pegar slides e caption gerada por IA
+        cfg_slides, ai_caption = None, ""
         try:
             cfg_path = os.path.join(post["slide_dir"], "config.json")
             with open(cfg_path, encoding="utf-8") as f:
                 cfg = json.load(f)
-            cfg_slides = cfg.get("slides")
+            cfg_slides  = cfg.get("slides")
+            ai_caption  = cfg.get("ai_caption", "")
         except Exception:
             pass
-        caption = build_caption(post["topic"], slides=cfg_slides)
+        caption = build_caption(post["topic"], slides=cfg_slides, ai_caption=ai_caption)
     platforms = platforms_override or json.loads(post["platforms"] or '["instagram","facebook","reddit","threads"]')
     resp      = publish_to_zernio(image_urls, caption, platforms)
 
@@ -476,7 +472,7 @@ def autopilot_job():
             idx = int(get_setting("theme_rotation", "0"))
             theme = THEMES[idx % len(THEMES)]
             set_setting("theme_rotation", idx + 1)
-            post_id, _, _ = do_generate(theme)
+            post_id, _, _, _ = do_generate(theme)
             result = do_publish(post_id)
             print(f"[AUTOPILOT] Published post {post_id} → {result['status']}")
         except Exception as e:
@@ -568,10 +564,10 @@ def api_fetch_topics():
         for it in news:
             _shown_headlines.add(it["headline"][:35].lower())
 
-        # Enriquece com Claude: gera conteúdo educativo estruturado
-        news = enrich_slides_with_ai(news)
+        # Enriquece com Claude: gera conteúdo educativo estruturado + caption narrativa
+        news, ai_caption = enrich_slides_with_ai(news)
 
-        cfg = build_carousel_config(news, "", date_str)
+        cfg = build_carousel_config(news, "", date_str, ai_caption=ai_caption)
         result = {
             "id":              "news_live",
             "topic":           f"IA em Pauta - {date_str}",
@@ -580,7 +576,8 @@ def api_fetch_topics():
             "headline_cover":  cfg["headline_cover"],
             "sub_cover":       cfg["sub_cover"],
             "cover_image_url": cfg.get("cover_image_url"),
-            "slides":          cfg["slides"],  # slides processados (limpeza de titulo/sub)
+            "slides":          cfg["slides"],
+            "ai_caption":      cfg.get("ai_caption", ""),
         }
         return jsonify(result)
     except Exception as e:
@@ -601,13 +598,14 @@ def api_generate():
 
     def run():
         try:
-            post_id, slides, slide_dir = do_generate(cfg_data)
+            post_id, slides, slide_dir, ai_caption = do_generate(cfg_data)
             _jobs[job_id] = {
-                "status":    "done",
-                "post_id":   post_id,
-                "slides":    slides,
-                "slide_dir": slide_dir,
-                "topic":     cfg_data.get("topic", "Carrossel IA")
+                "status":     "done",
+                "post_id":    post_id,
+                "slides":     slides,
+                "slide_dir":  slide_dir,
+                "topic":      cfg_data.get("topic", "Carrossel IA"),
+                "ai_caption": ai_caption,
             }
         except Exception as e:
             _jobs[job_id] = {"status": "failed", "error": str(e)}

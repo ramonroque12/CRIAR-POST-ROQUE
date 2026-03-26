@@ -379,14 +379,13 @@ def fetch_news_batch(max_items=6, exclude_keys=None):
 
 def enrich_slides_with_ai(news_items):
     """
-    Usa Claude para transformar notícias brutas em slides educativos estilo
-    @trampoComIA: cada slide tem tema, headline impactante e lista de itens
-    com título bold + descrição prática (não apenas manchetes).
+    Usa Claude para transformar notícias brutas em slides educativos e gerar
+    legenda narrativa para o post. Retorna (news_items, ai_caption).
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         print("[ENRICH] ANTHROPIC_API_KEY não encontrada. Usando notícias brutas.")
-        return news_items
+        return news_items, ""
 
     try:
         import anthropic
@@ -399,41 +398,47 @@ def enrich_slides_with_ai(news_items):
 
         prompt = f"""Você é uma agência de marketing digital de alto nível criando carrosséis virais para o Instagram @roquetrafegopago.
 
-ESTILO DE REFERÊNCIA: @trampoComIA no TikTok — slides educativos, texto grande, sem fotos, fundo limpo.
-Cada slide ENSINA algo prático, não apenas repassa uma manchete.
+ESTILO: slides educativos, texto grande, sem fotos. Cada slide ENSINA algo prático — não repassa manchete.
 
-Com base nas {len(news_items)} notícias abaixo, crie {len(news_items)} slides de carrossel em PT-BR.
+Com base nas {len(news_items)} notícias abaixo, crie em PT-BR:
 
-ESTRUTURA DE CADA SLIDE:
-- category: categoria em caps máx 3 palavras (ex: "META ADS", "GOOGLE ADS", "IA NO TRAMPO", "OPENAI AGORA")
-- headline: frase de impacto em 5-8 palavras, pode usar \\n para quebrar em 2-3 linhas. Ex: "O que a Meta\\nlançou de verdade."
-- items: lista de 3 a 4 pontos explicativos, cada um com:
-  - title: nome curto e direto, máx 4 palavras (ex: "Advantage+ Criativo", "Copy Automática")
-  - desc: explicação prática em 1 frase de até 15 palavras, linguagem direta para gestor de tráfego
+1) {len(news_items)} slides de carrossel, cada um com:
+   - category: categoria em caps máx 3 palavras (ex: "META ADS", "IA NO TRAMPO", "OPENAI AGORA")
+   - headline: frase de impacto em 5-8 palavras (pode usar \\n para quebrar em 2-3 linhas)
+   - items: lista de 3-4 pontos explicativos, cada um com:
+     - title: nome curto e direto, máx 4 palavras
+     - desc: explicação prática em 1-2 frases de até 25 palavras. ENSINE o conceito, dê contexto real, use números quando existirem. Não repita o título.
 
-REGRAS:
+2) Uma legenda narrativa para o post no Instagram com:
+   - Abertura impactante em 1-2 linhas (gancho)
+   - Para cada notícia: 1 parágrafo curto explicando o que mudou e o impacto prático para o gestor de tráfego
+   - Fechamento com CTA (ex: "Salva esse post pra não esquecer. 👊")
+   - NÃO inclua hashtags (serão adicionadas depois)
+   - Tom: direto, especialista, sem exageros
+
+REGRAS GERAIS:
 - Sempre PT-BR mesmo se a notícia for em inglês
-- Foco no IMPACTO PRÁTICO — o que o gestor vai fazer diferente depois de ler
-- Seja específico, use números quando existirem nas notícias
-- Linguagem de quem está por dentro do mercado digital
-- NÃO repita a manchete, ENSINE o conceito por trás dela
+- Foco no IMPACTO PRÁTICO para gestores de tráfego pago e marketing digital
+- Linguagem de quem está por dentro do mercado
 
 Notícias:
 {news_text}
 
 Retorne APENAS JSON válido, sem markdown:
-[{{"category":"...","headline":"...","items":[{{"title":"...","desc":"..."}}]}}]"""
+{{"caption":"...","slides":[{{"category":"...","headline":"...","items":[{{"title":"...","desc":"..."}}]}}]}}"""
 
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=3000,
+            max_tokens=4000,
             messages=[{"role": "user", "content": prompt}]
         )
 
         raw = message.content[0].text.strip()
         raw = re.sub(r'^```(?:json)?\s*', '', raw)
         raw = re.sub(r'\s*```$', '', raw)
-        enriched = json.loads(raw)
+        result   = json.loads(raw)
+        enriched = result.get("slides", result) if isinstance(result, dict) else result
+        ai_caption = result.get("caption", "") if isinstance(result, dict) else ""
 
         for i, item in enumerate(news_items):
             if i < len(enriched):
@@ -443,14 +448,14 @@ Retorne APENAS JSON válido, sem markdown:
                 item["items"]    = enriched[i].get("items", [])
 
         print(f"[ENRICH] {len(enriched)} slides enriquecidos com Claude.")
-        return news_items
+        return news_items, ai_caption
 
     except Exception as e:
         print(f"[ENRICH ERROR] {e}. Usando notícias brutas.")
-        return news_items
+        return news_items, ""
 
 
-def build_carousel_config(news_items, output_dir, date_str):
+def build_carousel_config(news_items, output_dir, date_str, ai_caption=""):
     if not news_items:
         return None
 
@@ -530,6 +535,7 @@ def build_carousel_config(news_items, output_dir, date_str):
         "week":            date_str,
         "output_dir":      output_dir,
         "slides":          slides,
+        "ai_caption":      ai_caption,
     }
 
 
