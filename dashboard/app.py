@@ -14,7 +14,7 @@ _shown_headlines: set = set()
 _SHOWN_MAX = 60  # reseta depois de 60 itens acumulados
 
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-SLIDES_ROOT = r"C:\Users\pc\Pictures\CLAUDECODE\PLANILHA AFILIADO\slides"
+SLIDES_ROOT = os.path.join(BASE_DIR, "..", "slides")
 DB_PATH     = os.path.join(BASE_DIR, "posts.db")
 GENERATOR   = os.path.join(BASE_DIR, "slide_generator_hollyfield.py")
 
@@ -653,4 +653,5 @@ if __name__ == "__main__":
     print("=" * 50)
     print("  ROQUE CONTENT HUB  ->  http://localhost:5000")
     print("=" * 50)
-    app.run(debug=False, port=5001, use_reloader=False)
+    port = int(os.environ.get("PORT", 5001))
+    app.run(debug=False, host="0.0.0.0", port=port, use_reloader=False)

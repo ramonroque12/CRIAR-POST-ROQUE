@@ -7,7 +7,7 @@ Formato: 1080x1350px (4:5 portrait)
 import os, sys, json, requests, io
 from PIL import Image, ImageDraw, ImageFont
 
-FONTS_DIR = r"C:\Users\pc\AppData\Roaming\Claude\local-agent-mode-sessions\skills-plugin\bef85731-c665-4b4d-a10a-a1c20c9fab22\b6405610-b616-4fed-97fb-6f49f412426d\skills\canvas-design\canvas-fonts"
+FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
 W, H    = 1080, 1350
 MARGIN  = 62
