@@ -421,9 +421,36 @@ def fetch_news_batch(max_items=6, exclude_keys=None):
     return fresh[:max_items]
 
 
+_CONTENT_BLOCKLIST = [
+    "erótico", "erotico", "safadão", "safadao", "adulto", "pornô",
+    "black friday", "cyber monday", "oferta", "desconto",
+    "bitcoin", "cripto", "nft", "eleição", "politica", "trump",
+    "samsung", "iphone", "celular", "gadget",
+]
+
+def _is_slide_valid(s):
+    """Valida que o slide tem conteúdo adequado e está em PT-BR."""
+    hl = s.get("headline", "")
+    items = s.get("items", [])
+    # Bloqueia conteúdo impróprio
+    hl_low = hl.lower()
+    if any(b in hl_low for b in _CONTENT_BLOCKLIST):
+        return False
+    # Bloqueia slides em inglês (mais de 3 palavras em inglês típico)
+    en_words = {"the", "and", "for", "that", "this", "with", "from", "yet",
+                "another", "side", "quest", "erotic", "mode", "says", "report"}
+    words = set(hl_low.split())
+    if len(words & en_words) >= 2:
+        return False
+    # Exige pelo menos 3 items com desc real
+    valid_items = [it for it in items
+                   if it.get("title") and it.get("desc") and len(it["desc"]) > 20]
+    return len(valid_items) >= 3
+
+
 def fetch_and_enrich_with_web_search(max_items=6, exclude_keys=None):
     """
-    Usa Claude com web_search para buscar notícias em tempo real E gerar
+    Usa Claude Sonnet com web_search para buscar notícias em tempo real E gerar
     conteúdo estruturado para slides + legenda em uma única chamada.
     Retorna (news_items, ai_caption). Fallback para RSS se falhar.
     """
@@ -434,49 +461,53 @@ def fetch_and_enrich_with_web_search(max_items=6, exclude_keys=None):
         return news, ""
 
     exclude_keys = exclude_keys or set()
-    avoid = ", ".join(list(exclude_keys)[:12]) if exclude_keys else "nenhum"
+    avoid = ", ".join(list(exclude_keys)[:15]) if exclude_keys else "nenhum"
 
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
 
-        prompt = f"""Você é um especialista em marketing digital e inteligência artificial criando conteúdo para o Instagram @roquetrafegopagoo.
+        prompt = f"""Você cria carrosséis educativos para o Instagram @roquetrafegopagoo — conta profissional de marketing digital e tráfego pago.
 
-Sua tarefa:
-1. Busque na web as {max_items} notícias MAIS RECENTES (últimas 48-72h) sobre IA aplicada a marketing digital. Priorize:
-   - ChatGPT, OpenAI, Claude, Anthropic, Gemini novidades
-   - Meta Ads, Facebook Ads, Instagram Ads com IA
-   - Google Ads, Performance Max, Smart Bidding
-   - TikTok Ads, automação, ferramentas de IA para anúncios
-   - Lançamentos e atualizações de ferramentas de IA 2026
+PASSO 1 — Busque na web AGORA as {max_items} notícias mais recentes (últimas 48h) sobre:
+• Novidades de ferramentas de IA: ChatGPT, Claude, Gemini, Copilot, Perplexity, Grok
+• Meta Ads / Facebook Ads: atualizações, Advantage+, automações
+• Google Ads: Performance Max, Smart Bidding, novidades
+• TikTok Ads, LinkedIn Ads: recursos com IA
+• IA aplicada a marketing digital, agentes de IA, automação de campanhas
 
-   EVITE temas já mostrados recentemente: {avoid}
-   EVITE: Black Friday, ofertas, gadgets, política, cripto
+REGRAS RÍGIDAS — descarte qualquer notícia que:
+✗ Esteja em inglês (TODOS os slides devem ser 100% PT-BR)
+✗ Trate de conteúdo adulto, erótico ou modo adulto de qualquer app
+✗ Seja duplicada ou muito parecida com outra já na lista
+✗ Fale de gadgets, celulares, eleições, cripto, Black Friday, ofertas
+✗ Seja lista genérica ("X alternativas ao ChatGPT") sem notícia real
+✗ Já foi mostrada recentemente: {avoid}
 
-2. Para cada notícia, crie um slide educativo em PT-BR:
-   - category: categoria CAPS máx 3 palavras (ex: "META ADS", "OPENAI AGORA", "IA NO TRAMPO")
-   - headline: frase de impacto 5-8 palavras (use \\n para quebrar linhas)
-   - items: 3-4 pontos com:
-     - title: título curto 4 palavras
-     - desc: explicação prática 20-25 palavras — ENSINE o conceito, não repita o título
+PASSO 2 — Para cada notícia válida, crie um slide em PT-BR com:
+• category: CAPS, máx 3 palavras (ex: "OPENAI AGORA", "META ADS", "GOOGLE ADS")
+• headline: frase de impacto 5-8 palavras (pode usar \\n para quebrar em 2 linhas)
+• items: EXATAMENTE 3 pontos explicativos, cada um com:
+  - title: 3-4 palavras diretas
+  - desc: 1-2 frases de 20-28 palavras explicando o IMPACTO PRÁTICO para gestor de tráfego. Seja específico.
 
-3. Crie uma legenda narrativa para Instagram:
-   - Gancho forte na primeira linha
-   - 1 parágrafo por notícia explicando o impacto prático para gestores de tráfego
-   - CTA no final (ex: "Salva esse post. 👊")
-   - Sem hashtags (serão adicionadas depois)
+PASSO 3 — Crie uma legenda narrativa para o post:
+• Abertura impactante
+• 1 parágrafo por notícia (impacto prático para gestores)
+• Fechamento com CTA
+• SEM hashtags
 
-Retorne APENAS JSON válido sem markdown:
+Retorne APENAS JSON válido (sem markdown, sem texto fora do JSON):
 {{"caption":"...","slides":[{{"category":"...","headline":"...","items":[{{"title":"...","desc":"..."}}]}}]}}"""
 
         message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=5000,
+            model="claude-sonnet-4-6",
+            max_tokens=6000,
             tools=[{"type": "web_search_20250305", "name": "web_search"}],
             messages=[{"role": "user", "content": prompt}]
         )
 
-        # Extrai texto final (ignora blocos de tool_use)
+        # Extrai texto final (ignora blocos de tool_use e tool_result)
         text = ""
         for block in message.content:
             if hasattr(block, "type") and block.type == "text":
@@ -485,22 +516,33 @@ Retorne APENAS JSON válido sem markdown:
         text = text.strip()
         text = re.sub(r'^```(?:json)?\s*', '', text)
         text = re.sub(r'\s*```$', '', text)
+        # Extrai apenas o JSON se vier com texto antes/depois
+        m = re.search(r'\{.*\}', text, re.DOTALL)
+        if m:
+            text = m.group(0)
+
         result     = json.loads(text)
         slides_raw = result.get("slides", [])
         ai_caption = result.get("caption", "")
 
+        # Valida e filtra slides inválidos
+        slides_raw = [s for s in slides_raw if _is_slide_valid(s)]
+
+        if not slides_raw:
+            raise ValueError("Nenhum slide válido após filtragem — usando RSS fallback.")
+
         news_items = []
-        for s in slides_raw:
+        for s in slides_raw[:max_items]:
             news_items.append({
-                "headline":  s.get("headline", ""),
-                "sub":       "",
-                "image_url": None,
+                "headline":   s.get("headline", ""),
+                "sub":        "",
+                "image_url":  None,
                 "source_url": "",
-                "category":  s.get("category", "MARKETING DIGITAL"),
-                "items":     s.get("items", []),
+                "category":   s.get("category", "MARKETING DIGITAL"),
+                "items":      s.get("items", []),
             })
 
-        print(f"[WEB SEARCH] {len(news_items)} slides gerados com web search.")
+        print(f"[WEB SEARCH] {len(news_items)} slides válidos gerados.")
         return news_items, ai_caption
 
     except Exception as e:
