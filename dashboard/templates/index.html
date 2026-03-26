@@ -498,10 +498,13 @@
           <input type="checkbox" id="chk-fb" checked> Facebook
         </label>
         <label class="platform-check">
-          <input type="checkbox" id="chk-rd"> Reddit
+          <input type="checkbox" id="chk-tk" checked> TikTok
         </label>
         <label class="platform-check">
           <input type="checkbox" id="chk-th" checked> Threads
+        </label>
+        <label class="platform-check">
+          <input type="checkbox" id="chk-rd"> Reddit
         </label>
       </div>
 
@@ -947,8 +950,9 @@ function getSelectedPlatforms() {
   const p = [];
   if (document.getElementById('chk-ig').checked) p.push('instagram');
   if (document.getElementById('chk-fb').checked) p.push('facebook');
-  if (document.getElementById('chk-rd').checked) p.push('reddit');
+  if (document.getElementById('chk-tk').checked) p.push('tiktok');
   if (document.getElementById('chk-th').checked) p.push('threads');
+  if (document.getElementById('chk-rd').checked) p.push('reddit');
   return p;
 }
 
@@ -973,7 +977,7 @@ async function publishNow() {
     if (data.status === 'failed') throw new Error('Zernio rejeitou o post. Verifique as conexões das plataformas.');
 
     alertEl.className = 'alert success';
-    const names = platforms.map(p=>({instagram:'Instagram',facebook:'Facebook',reddit:'Reddit',threads:'Threads'}[p])).join(', ');
+    const names = platforms.map(p=>({instagram:'Instagram',facebook:'Facebook',tiktok:'TikTok',threads:'Threads',reddit:'Reddit'}[p]||p)).join(', ');
     const link = data.post_url ? ` <a href="${data.post_url}" target="_blank" style="color:inherit;text-decoration:underline">Ver post →</a>` : '';
     alertEl.innerHTML = `✓ Publicado com sucesso em: ${names}!${link}`;
     btn.innerHTML = '✓ Publicado!';
@@ -1001,7 +1005,7 @@ async function schedulePost() {
   });
   const data = await r.json();
   const fmtDate = new Date(dt).toLocaleString('pt-BR');
-  const names = platforms.map(p=>({instagram:'Instagram',facebook:'Facebook',reddit:'Reddit',threads:'Threads'}[p])).join(', ');
+  const names = platforms.map(p=>({instagram:'Instagram',facebook:'Facebook',tiktok:'TikTok',threads:'Threads',reddit:'Reddit'}[p]||p)).join(', ');
   alertEl.className = 'alert success';
   alertEl.textContent = `✓ Agendado para ${fmtDate} em: ${names}.`;
   await loadPosts();

@@ -36,6 +36,7 @@ INSTAGRAM_ID   = "69c407166cb7b8cf4c9ac812"
 FACEBOOK_ID    = "69c406ff6cb7b8cf4c9ac7b7"
 REDDIT_ID      = "69c407286cb7b8cf4c9ac85e"
 THREADS_ID     = "69c5304f6cb7b8cf4ca00954"
+TIKTOK_ID      = "69c58a976cb7b8cf4ca181cb"
 ZERNIO_BASE    = "https://zernio.com/api/v1"
 
 PLATFORM_IDS = {
@@ -43,6 +44,7 @@ PLATFORM_IDS = {
     "facebook":  FACEBOOK_ID,
     "reddit":    REDDIT_ID,
     "threads":   THREADS_ID,
+    "tiktok":    TIKTOK_ID,
 }
 
 app = Flask(__name__, template_folder="templates")
@@ -393,7 +395,7 @@ def do_generate(cfg_data):
     with get_db() as conn:
         cur = conn.execute(
             "INSERT INTO posts (topic, slide_dir, status, platforms) VALUES (?,?,?,?)",
-            (topic, out_dir, "draft", '["instagram","facebook","threads"]')
+            (topic, out_dir, "draft", '["instagram","facebook","tiktok","threads"]')
         )
         post_id = cur.lastrowid
         conn.commit()
