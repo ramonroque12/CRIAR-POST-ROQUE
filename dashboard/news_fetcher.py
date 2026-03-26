@@ -8,12 +8,14 @@ Enriquecimento via Claude API: transforma headlines crus em slides PT-BR complet
 import os, re, requests, random, unicodedata, json
 from xml.etree import ElementTree
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from email.utils import parsedate_to_datetime
+from datetime import datetime, timezone, timedelta
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
 
-# Feeds RSS diretos — tech BR + marketing digital
+# Feeds RSS diretos — tech BR + IA + marketing digital
 DIRECT_FEEDS = [
     "https://tecnoblog.net/feed/",
     "https://www.canaltech.com.br/rss/",
@@ -21,7 +23,12 @@ DIRECT_FEEDS = [
     "https://www.tecmundo.com.br/rss.xml",
     "https://forbes.com.br/feed/",
     "https://resultadosdigitais.com.br/feed/",
+    "https://venturebeat.com/category/ai/feed/",
+    "https://techcrunch.com/category/artificial-intelligence/feed/",
 ]
+
+# Máximo de dias de idade para aceitar um artigo
+MAX_AGE_DAYS = 10
 
 # Palavras-chave FORTES — pelo menos UMA deve estar no TÍTULO para passar
 # Removidas as genéricas curtas (" ia ", "de ia", etc.) que causavam falsos positivos
@@ -30,8 +37,9 @@ TITLE_KEYWORDS = [
     "inteligência artificial", "inteligencia artificial",
     "chatgpt", "openai", "anthropic", "gemini", "copilot",
     "gpt-4", "gpt-5", "gpt4", "gpt5", "llm", "deepseek",
-    "claude ai", "perplexity", "midjourney", "stable diffusion",
-    "sam altman", "jensen huang", "grok", "mistral",
+    "claude ai", "claude 3", "claude 4", "claude sonnet", "claude opus",
+    "perplexity", "midjourney", "stable diffusion",
+    "sam altman", "jensen huang", "grok", "mistral", "llama",
     # Plataformas de Tráfego Pago — termos fortes
     "meta ads", "facebook ads", "instagram ads",
     "google ads", "tiktok ads", "youtube ads",
@@ -65,9 +73,11 @@ TITLE_BLOCKLIST = [
     # Conteúdo de entretenimento / lifestyle
     "netflix", "spotify", "steam", "playstation", "xbox", "nintendo",
     "gasolina", "combustível",
-    # Termos de e-commerce / oferta
+    # Termos de e-commerce / oferta / datas antigas
     "em oferta", "menor preço", "melhor custo", "vale a pena comprar",
     "fique sem", "não fique", "confira", "desconto",
+    "black friday", "black friday 2024", "cyber monday",
+    "prime day", "liquidação",
     # Política sem relação com marketing
     "trump nomeia", "trump anuncia", "governo federal", "senado", "câmara dos",
     "ministério", "presidente lula", "eleições",
@@ -75,12 +85,18 @@ TITLE_BLOCKLIST = [
     "currículo opcional", "processo seletivo", "vaga de emprego",
 ]
 
-# Queries para Google News RSS — focadas no nicho
+# Queries para Google News RSS — focadas no nicho, variedade garante rotação
 GOOGLE_QUERIES = [
-    "tráfego pago inteligência artificial Meta Ads Google Ads 2026",
-    "ChatGPT OpenAI marketing digital novidades 2026",
-    "Meta Ads Google Ads IA automação novidades",
-    "inteligência artificial marketing digital afiliados",
+    "ChatGPT OpenAI novidades 2026",
+    "Claude Anthropic IA novidades",
+    "Gemini Google IA marketing 2026",
+    "Meta Ads inteligência artificial automação 2026",
+    "Google Ads Performance Max IA 2026",
+    "tráfego pago inteligência artificial 2026",
+    "marketing digital IA ferramentas 2026",
+    "OpenAI GPT lançamento novidade",
+    "Meta AI ferramenta marketing digital",
+    "TikTok Ads IA automação 2026",
 ]
 
 NAMESPACES = {
@@ -90,6 +106,21 @@ NAMESPACES = {
 }
 
 GOOGLE_RSS = "https://news.google.com/rss/search?q={q}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
+
+
+def _is_recent(item, max_days=MAX_AGE_DAYS):
+    """Retorna True se o artigo foi publicado nos últimos max_days dias."""
+    pub = item.findtext("pubDate", "") or item.findtext("{http://purl.org/dc/elements/1.1/}date", "")
+    if not pub:
+        return True  # sem data, aceita (benefício da dúvida)
+    try:
+        dt = parsedate_to_datetime(pub)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - dt
+        return age.days <= max_days
+    except Exception:
+        return True
 
 
 def _norm(s):
@@ -233,6 +264,8 @@ def fetch_from_direct_feeds(max_items=6):
             root = ElementTree.fromstring(r.content)
 
             for item in root.iter("item"):
+                if not _is_recent(item):
+                    continue
                 title = clean_title(strip_html(item.findtext("title", "")))
                 link  = item.findtext("link", "")
                 desc  = strip_html(item.findtext("description", ""))[:600]
@@ -295,6 +328,8 @@ def fetch_from_google_news(max_items=6):
             for item in root.iter("item"):
                 if len(candidates) >= max_items * 2:
                     break
+                if not _is_recent(item):
+                    continue
                 title = clean_title(strip_html(item.findtext("title", "")))
                 link  = item.findtext("link", "")
                 raw_desc = strip_html(item.findtext("description", ""))
@@ -343,35 +378,44 @@ def fetch_from_google_news(max_items=6):
 
 def fetch_news_batch(max_items=6, exclude_keys=None):
     """
-    Busca noticias sobre Tráfego Pago + IA.
-    Filtro estrito — só passa artigos claramente sobre o nicho.
-    exclude_keys: headlines já mostrados (evita repetição).
+    Busca noticias recentes (últimos 10 dias) sobre IA + Tráfego Pago.
+    exclude_keys: headlines já mostrados — nunca repete.
+    Quando pool local esgota, busca queries Google News diferentes.
     """
     exclude_keys = exclude_keys or set()
 
-    print("[NEWS] Buscando nos feeds diretos (filtro estrito)...")
+    print("[NEWS] Buscando nos feeds diretos...")
     items = fetch_from_direct_feeds(max_items * 3)
 
-    if len(items) < max_items:
-        print(f"[NEWS] {len(items)} nos feeds diretos. Complementando com Google News...")
-        extra = fetch_from_google_news(max_items - len(items))
-        existing = {it["headline"][:35].lower() for it in items}
-        for ex in extra:
-            if ex["headline"][:35].lower() not in existing:
-                items.append(ex)
-                existing.add(ex["headline"][:35].lower())
+    # Sempre complementa com Google News usando queries variadas
+    print("[NEWS] Complementando com Google News...")
+    extra = fetch_from_google_news(max_items * 2)
+    existing = {it["headline"][:35].lower() for it in items}
+    for ex in extra:
+        key = ex["headline"][:35].lower()
+        if key not in existing:
+            items.append(ex)
+            existing.add(key)
 
     print(f"[NEWS] Pool total: {len(items)} noticias relevantes.")
 
+    # Filtra artigos já exibidos
     fresh = [it for it in items if it["headline"][:35].lower() not in exclude_keys]
     print(f"[NEWS] Fresh (nao mostrados): {len(fresh)}")
 
-    if len(fresh) < max_items:
-        print("[NEWS] Pool esgotado — retornando sem filtro de exclusao.")
-        fresh = items
-
-    # Double-check: garante que nada do blocklist escapou
+    # Double-check blocklist
     fresh = [it for it in fresh if is_relevant(it["headline"])]
+
+    if len(fresh) < max_items:
+        # Pool esgotado: busca mais queries Google News com rotação aleatória total
+        print("[NEWS] Pool fresco insuficiente — buscando mais queries...")
+        extra2 = fetch_from_google_news(max_items * 3)
+        all_keys = {it["headline"][:35].lower() for it in fresh}
+        for ex in extra2:
+            key = ex["headline"][:35].lower()
+            if key not in all_keys and key not in exclude_keys and is_relevant(ex["headline"]):
+                fresh.append(ex)
+                all_keys.add(key)
 
     random.shuffle(fresh)
     return fresh[:max_items]
