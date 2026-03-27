@@ -492,7 +492,7 @@ Retorne APENAS JSON válido com a lista de notícias encontradas:
 [{{"headline":"título em PT-BR 5-8 palavras","sub":"resumo do que aconteceu em 1-2 frases em PT-BR"}}]"""
 
         msg1 = client.messages.create(
-            model="claude-sonnet-4-5-20251022",
+            model="claude-haiku-4-5-20251001",
             max_tokens=2000,
             tools=[{"type": "web_search_20250305", "name": "web_search"}],
             messages=[{"role": "user", "content": search_prompt}]

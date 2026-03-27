@@ -511,8 +511,8 @@ def refresh_autopilot():
     if get_setting("autopilot_enabled") == "true":
         h = int(get_setting("autopilot_hour", "19"))
         m = int(get_setting("autopilot_minute", "0"))
-        scheduler.add_job(autopilot_job, "cron", hour=h, minute=m, id="autopilot")
-        print(f"[AUTOPILOT] Activated at {h:02d}:{m:02d}")
+        scheduler.add_job(autopilot_job, "cron", day="*/2", hour=h, minute=m, id="autopilot")
+        print(f"[AUTOPILOT] Activated every 2 days at {h:02d}:{m:02d}")
 
 refresh_autopilot()
 
