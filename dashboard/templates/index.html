@@ -121,7 +121,41 @@
   .btn-ghost { background: var(--bg3); color: var(--white); border: 1px solid var(--border); }
   .btn-green { background: var(--green); color: var(--bg); }
   .btn-danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
+  .btn-ad { background: linear-gradient(135deg, #ff6000, #ff3000); color: #fff; }
   .btn-sm { padding: 6px 12px; font-size: 11px; }
+
+  /* ── AD MODAL ── */
+  .modal-ad {
+    background: var(--bg2); border: 1px solid #7a2e00;
+    border-top: 3px solid #ff6000;
+    border-radius: 16px; width: 720px; max-height: 90vh;
+    overflow-y: auto; padding: 28px; position: relative;
+  }
+  .modal-ad h2 { font-size: 18px; margin-bottom: 6px; }
+  .modal-ad .subtitle { font-size: 13px; color: var(--gray); margin-bottom: 24px; }
+  .ad-badge {
+    display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .1em;
+    padding: 3px 10px; border-radius: 20px;
+    background: rgba(255,96,0,.15); color: #ff8030; border: 1px solid rgba(255,96,0,.3);
+    margin-bottom: 14px;
+  }
+  .aida-label {
+    display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .1em;
+    padding: 3px 10px; border-radius: 20px; margin-left: 8px;
+    background: rgba(255,96,0,.2); color: #ff8030;
+  }
+  .ad-step-circle { background: #ff6000 !important; border-color: #ff6000 !important; color: #0d0d14 !important; }
+  .btn-orange { background: linear-gradient(135deg, #ff6000, #ff3000); color: #fff; border: none; }
+  .btn-orange:hover { opacity: .88; }
+  .ad-form-section { margin-bottom: 20px; }
+  .ad-form-section label {
+    display: block; font-size: 11px; color: var(--gray);
+    text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px;
+  }
+  .ad-tip {
+    font-size: 11px; color: #ff8030; margin-top: 5px;
+    display: flex; align-items: center; gap: 5px;
+  }
 
   /* ── POSTS TABLE ── */
   .table-wrap { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
@@ -296,6 +330,7 @@
   <div class="header-right">
     <span class="badge-auto" id="autopilot-badge">● PILOTO AUTO OFF</span>
     <button class="btn btn-primary" onclick="openModal()">+ Novo Post</button>
+    <button class="btn btn-ad" onclick="openAdModal()">🎯 Novo Criativo Meta Ads</button>
   </div>
 </header>
 
@@ -522,6 +557,144 @@
       </div>
 
       <div class="alert" id="modal-alert"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── MODAL META ADS CRIATIVO ── -->
+<div class="modal-bg" id="modal-ad-bg" onclick="handleAdBgClick(event)">
+  <div class="modal-ad">
+    <button class="modal-close" onclick="closeAdModal()">✕</button>
+    <div class="ad-badge">◆ META ADS</div>
+    <h2>Criar Criativo <span style="color:#ff6000">Meta Ads</span></h2>
+    <p class="subtitle">Informe o tema e a IA gera um carrossel com estrutura AIDA otimizado para conversão.</p>
+
+    <!-- Steps -->
+    <div class="steps" id="ad-steps">
+      <div class="step active" id="ad-step1">
+        <div class="step-circle" style="background:#ff6000;border-color:#ff6000;color:#0d0d14">1</div>
+        <div class="step-label">Tema</div>
+      </div>
+      <div class="step" id="ad-step2">
+        <div class="step-circle">2</div>
+        <div class="step-label">Criativo</div>
+      </div>
+      <div class="step" id="ad-step3">
+        <div class="step-circle">3</div>
+        <div class="step-label">Publicar</div>
+      </div>
+    </div>
+
+    <!-- STEP 1: Formulário -->
+    <div id="ad-panel-step1">
+      <div style="background:rgba(255,96,0,.06);border:1px solid rgba(255,96,0,.2);border-radius:10px;padding:14px 16px;margin-bottom:20px;font-size:12px;color:#ff9050;line-height:1.6">
+        <strong>Framework AIDA aplicado:</strong><br>
+        A IA gera a capa + 5 slides estruturados em
+        <span style="color:#dc2828;font-weight:700">ATENÇÃO</span> →
+        <span style="color:#ff8c00;font-weight:700">INTERESSE</span> →
+        <span style="color:#ffc800;font-weight:700">DESEJO</span> →
+        <span style="color:#00d278;font-weight:700">AÇÃO</span>
+        — com copy persuasiva, estatísticas e CTA direto.
+      </div>
+
+      <div class="ad-form-section">
+        <label>Tema / Produto / Serviço <span style="color:#ff6000">*</span></label>
+        <input type="text" id="ad-topic" class="form-input" style="width:100%"
+               placeholder="Ex: Curso de Meta Ads, Suplemento Emagrecedor, Consultoria Financeira..."
+               onkeydown="if(event.key==='Enter')generateAdSlides()">
+        <div class="ad-tip">💡 Quanto mais específico, melhor o criativo gerado pela IA</div>
+      </div>
+
+      <div class="ad-form-section">
+        <label>Objetivo / O que você quer comunicar</label>
+        <input type="text" id="ad-objective" class="form-input" style="width:100%"
+               placeholder="Ex: Gerar leads, vender curso, aumentar seguidores, divulgar promoção...">
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="ad-form-section">
+          <label>Público-alvo</label>
+          <input type="text" id="ad-target" class="form-input" style="width:100%"
+                 placeholder="Ex: Empreendedores 25-45 anos, Afiliados iniciantes...">
+        </div>
+        <div class="ad-form-section">
+          <label>CTA do botão de ação</label>
+          <input type="text" id="ad-cta" class="form-input" style="width:100%"
+                 placeholder="Ex: Quero me inscrever, Ver oferta, Clique aqui">
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:8px">
+        <button class="btn btn-orange" style="padding:12px 28px;font-size:14px" onclick="generateAdSlides()">
+          🤖 Gerar com IA →
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 2: Preview -->
+    <div id="ad-panel-step2" style="display:none">
+      <p style="font-size:13px;color:var(--gray);margin-bottom:10px" id="ad-gen-status">Gerando criativo...</p>
+      <div class="progress-wrap">
+        <div class="progress-bar">
+          <div class="progress-fill" id="ad-progress-fill"
+               style="width:0%;background:linear-gradient(90deg,#ff6000,#ff3000)"></div>
+        </div>
+      </div>
+      <div class="slides-preview" id="ad-slides-preview"></div>
+      <div style="display:flex;gap:12px;margin-top:16px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="adGoStep(1)">← Voltar</button>
+        <button class="btn btn-orange" id="ad-btn-next" onclick="adGoStep(3)" disabled>
+          Publicar →
+        </button>
+      </div>
+    </div>
+
+    <!-- STEP 3: Publicar -->
+    <div id="ad-panel-step3" style="display:none">
+      <p style="font-size:13px;color:var(--gray);margin-bottom:12px">
+        Criativo pronto! Revise a legenda e publique:
+      </p>
+
+      <div class="form-group" style="margin-bottom:16px">
+        <label>Legenda do Post</label>
+        <textarea id="ad-caption-editor" class="form-input"
+          style="width:100%;min-height:130px;resize:vertical;font-size:12px;line-height:1.5;font-family:monospace"
+          placeholder="Legenda gerada com copy persuasiva..."></textarea>
+      </div>
+
+      <div class="platform-row" style="margin-bottom:20px;flex-wrap:wrap;gap:16px">
+        <label class="platform-check">
+          <input type="checkbox" id="ad-chk-ig" checked> Instagram
+        </label>
+        <label class="platform-check">
+          <input type="checkbox" id="ad-chk-fb" checked> Facebook
+        </label>
+        <label class="platform-check">
+          <input type="checkbox" id="ad-chk-tk"> TikTok
+        </label>
+        <label class="platform-check">
+          <input type="checkbox" id="ad-chk-th"> Threads
+        </label>
+        <label class="platform-check">
+          <input type="checkbox" id="ad-chk-rd"> Reddit
+        </label>
+      </div>
+
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <button class="btn btn-orange" id="ad-btn-publish" onclick="adPublishNow()">
+          🚀 Publicar Agora
+        </button>
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <div class="form-group">
+            <label>Agendar para</label>
+            <input type="datetime-local" class="form-input" id="ad-schedule-dt">
+          </div>
+          <button class="btn btn-ghost" onclick="adSchedulePost()">📅 Agendar</button>
+        </div>
+      </div>
+
+      <div class="alert" id="ad-modal-alert"></div>
     </div>
 
   </div>
@@ -1006,6 +1179,215 @@ async function schedulePost() {
   const data = await r.json();
   const fmtDate = new Date(dt).toLocaleString('pt-BR');
   const names = platforms.map(p=>({instagram:'Instagram',facebook:'Facebook',tiktok:'TikTok',threads:'Threads',reddit:'Reddit'}[p]||p)).join(', ');
+  alertEl.className = 'alert success';
+  alertEl.textContent = `✓ Agendado para ${fmtDate} em: ${names}.`;
+  await loadPosts();
+}
+
+// ── Ad Creative (Meta Ads) ────────────────────────────────────────────────────
+let adCurrentPostId = null;
+
+function openAdModal() {
+  adCurrentPostId = null;
+  document.getElementById('ad-modal-alert').className = 'alert';
+  document.getElementById('ad-modal-alert').textContent = '';
+  document.getElementById('ad-topic').value = '';
+  document.getElementById('ad-objective').value = '';
+  document.getElementById('ad-target').value = '';
+  document.getElementById('ad-cta').value = '';
+  adGoStep(1);
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  d.setHours(19, 0, 0, 0);
+  document.getElementById('ad-schedule-dt').value = d.toISOString().slice(0, 16);
+  document.getElementById('modal-ad-bg').classList.add('open');
+  document.getElementById('ad-topic').focus();
+}
+
+function closeAdModal() {
+  document.getElementById('modal-ad-bg').classList.remove('open');
+  loadPosts();
+}
+
+function handleAdBgClick(e) {
+  if (e.target === document.getElementById('modal-ad-bg')) closeAdModal();
+}
+
+function adGoStep(n) {
+  [1, 2, 3].forEach(i => {
+    document.getElementById(`ad-panel-step${i}`).style.display = i === n ? 'block' : 'none';
+    const el = document.getElementById(`ad-step${i}`);
+    el.classList.remove('active', 'done');
+    const circle = el.querySelector('.step-circle');
+    circle.style.background = '';
+    circle.style.borderColor = '';
+    circle.style.color = '';
+    if (i === n) {
+      el.classList.add('active');
+      circle.style.background = '#ff6000';
+      circle.style.borderColor = '#ff6000';
+      circle.style.color = '#0d0d14';
+    } else if (i < n) {
+      el.classList.add('done');
+      circle.style.background = 'var(--green)';
+      circle.style.borderColor = 'var(--green)';
+      circle.style.color = 'var(--bg)';
+    }
+  });
+}
+
+async function generateAdSlides() {
+  const topic = document.getElementById('ad-topic').value.trim();
+  if (!topic) {
+    document.getElementById('ad-topic').focus();
+    document.getElementById('ad-topic').style.borderColor = 'var(--red)';
+    setTimeout(() => document.getElementById('ad-topic').style.borderColor = '', 2000);
+    return;
+  }
+  const objective = document.getElementById('ad-objective').value.trim();
+  const target    = document.getElementById('ad-target').value.trim();
+  const cta       = document.getElementById('ad-cta').value.trim();
+
+  adGoStep(2);
+
+  const preview = document.getElementById('ad-slides-preview');
+  const status  = document.getElementById('ad-gen-status');
+  const fill    = document.getElementById('ad-progress-fill');
+  const btnNext = document.getElementById('ad-btn-next');
+
+  preview.innerHTML = Array(6).fill('<div class="slide-thumb loading">⏳</div>').join('');
+  status.textContent = '🤖 Gerando criativo com IA (AIDA)...';
+  fill.style.width = '10%';
+  btnNext.disabled = true;
+
+  try {
+    const r = await fetch('/api/generate-ad', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic, objective, target, cta })
+    });
+    const init = await r.json();
+    if (init.error) throw new Error(init.error);
+    const jobId = init.job_id;
+
+    const labels = [
+      '🤖 Gerando conteúdo AIDA com IA.',
+      '🤖 Gerando conteúdo AIDA com IA..',
+      '🤖 Renderizando slides Meta Ads...',
+    ];
+    let dots = 0, attempts = 0;
+    const poll = setInterval(async () => {
+      attempts++;
+      if (attempts > 80) {
+        clearInterval(poll);
+        status.textContent = '✗ Timeout — tente novamente';
+        fill.style.background = 'var(--red)';
+        return;
+      }
+      dots = (dots + 1) % 3;
+      fill.style.width = Math.min(15 + attempts * 1.1, 88) + '%';
+      status.textContent = labels[dots];
+      try {
+        const sr = await fetch(`/api/generate/${jobId}`);
+        if (!sr.ok) return;
+        const data = await sr.json();
+        if (data.status === 'done') {
+          clearInterval(poll);
+          adCurrentPostId = data.post_id;
+          fill.style.width = '100%';
+          status.textContent = `✓ ${data.slides.length} slides gerados — ${data.topic}`;
+          const dirName = data.slide_dir.replace(/\\/g, '/').split('/').pop();
+          preview.innerHTML = data.slides.map((f, i) => `
+            <div class="slide-thumb">
+              <img src="/slides/${dirName}/${f}" alt="Slide ${i + 1}"
+                   onerror="this.parentElement.innerHTML='<span style=font-size:11px>${i + 1}</span>'" />
+            </div>
+          `).join('');
+          document.getElementById('ad-caption-editor').value = buildAdCaption(data.topic, data.ai_caption, cta);
+          btnNext.disabled = false;
+        } else if (data.status === 'failed') {
+          clearInterval(poll);
+          status.textContent = '✗ Erro: ' + (data.error || 'Geração falhou');
+          fill.style.background = 'var(--red)';
+        }
+      } catch (pe) {}
+    }, 3000);
+  } catch (e) {
+    status.textContent = '✗ Erro: ' + e.message;
+    fill.style.background = 'var(--red)';
+  }
+}
+
+function buildAdCaption(topic, aiCaption, cta) {
+  const footer = `📲 Siga @roquetrafegopagoo para mais!\n🔗 agenciaroque.com.br`;
+  const hashtags = `#MetaAds #TrafegoPago #MarketingDigital #AnuncioMeta #CriativoMeta #AgenciaRoque`;
+  if (aiCaption && aiCaption.trim()) {
+    return `${aiCaption.trim()}\n\n${footer}\n\n${hashtags}`;
+  }
+  return `🔥 ${topic}\n\nTransforme seus resultados com a estratégia certa.\n\n👉 ${cta || 'Clique e saiba mais'}\n\n${footer}\n\n${hashtags}`;
+}
+
+function getAdSelectedPlatforms() {
+  const p = [];
+  if (document.getElementById('ad-chk-ig').checked) p.push('instagram');
+  if (document.getElementById('ad-chk-fb').checked) p.push('facebook');
+  if (document.getElementById('ad-chk-tk').checked) p.push('tiktok');
+  if (document.getElementById('ad-chk-th').checked) p.push('threads');
+  if (document.getElementById('ad-chk-rd').checked) p.push('reddit');
+  return p;
+}
+
+async function adPublishNow() {
+  if (!adCurrentPostId) return;
+  const platforms = getAdSelectedPlatforms();
+  const alertEl   = document.getElementById('ad-modal-alert');
+  if (!platforms.length) {
+    alertEl.className = 'alert error';
+    alertEl.textContent = 'Selecione ao menos uma plataforma.';
+    return;
+  }
+  const btn     = document.getElementById('ad-btn-publish');
+  const caption = document.getElementById('ad-caption-editor').value;
+
+  btn.innerHTML = '<span class="spinner"></span> Publicando...';
+  btn.disabled  = true;
+  try {
+    const r = await fetch(`/api/publish/${adCurrentPostId}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platforms, caption })
+    });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    if (data.status === 'failed') throw new Error('Zernio rejeitou. Verifique conexões das plataformas.');
+
+    alertEl.className = 'alert success';
+    const names = platforms.map(p => ({ instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok', threads: 'Threads', reddit: 'Reddit' }[p] || p)).join(', ');
+    const link = data.post_url ? ` <a href="${data.post_url}" target="_blank" style="color:inherit;text-decoration:underline">Ver post →</a>` : '';
+    alertEl.innerHTML = `✓ Publicado em: ${names}!${link}`;
+    btn.innerHTML = '✓ Publicado!';
+    await loadPosts();
+  } catch (e) {
+    alertEl.className = 'alert error';
+    alertEl.textContent = '✗ Erro: ' + e.message;
+    btn.innerHTML = '🚀 Publicar Agora';
+    btn.disabled  = false;
+  }
+}
+
+async function adSchedulePost() {
+  if (!adCurrentPostId) return;
+  const dt = document.getElementById('ad-schedule-dt').value;
+  if (!dt) { alert('Selecione data e hora.'); return; }
+  const platforms = getAdSelectedPlatforms();
+  if (!platforms.length) { alert('Selecione ao menos uma plataforma.'); return; }
+  const alertEl = document.getElementById('ad-modal-alert');
+  const caption = document.getElementById('ad-caption-editor').value;
+  const r = await fetch(`/api/schedule/${adCurrentPostId}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scheduled_at: dt, platforms, caption })
+  });
+  await r.json();
+  const fmtDate = new Date(dt).toLocaleString('pt-BR');
+  const names = platforms.map(p => ({ instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok', threads: 'Threads', reddit: 'Reddit' }[p] || p)).join(', ');
   alertEl.className = 'alert success';
   alertEl.textContent = `✓ Agendado para ${fmtDate} em: ${names}.`;
   await loadPosts();

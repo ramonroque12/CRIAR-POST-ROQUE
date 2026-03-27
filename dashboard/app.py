@@ -28,8 +28,9 @@ if os.path.exists(_env_path):
             if _line and not _line.startswith("#") and "=" in _line:
                 _k, _v = _line.split("=", 1)
                 os.environ.setdefault(_k.strip(), _v.strip())
-DB_PATH     = os.path.join(BASE_DIR, "posts.db")
-GENERATOR   = os.path.join(BASE_DIR, "slide_generator_cyberpulse.py")
+DB_PATH            = os.path.join(BASE_DIR, "posts.db")
+GENERATOR          = os.path.join(BASE_DIR, "slide_generator_cyberpulse.py")
+GENERATOR_METAADS  = os.path.join(BASE_DIR, "slide_generator_metaads.py")
 
 ZERNIO_KEY     = "sk_8ce15a5d1c7a69631d059f6b05db4107426d1c40b3d10ef587c5a19bd6cb2b6c"
 INSTAGRAM_ID   = "69c407166cb7b8cf4c9ac812"
@@ -704,6 +705,201 @@ def api_settings():
         refresh_autopilot()
 
     return jsonify({"ok": True})
+
+# ── Meta Ads Criativo ─────────────────────────────────────────────────────────
+def _build_fallback_ad_config(topic, cta):
+    return {
+        "topic": topic,
+        "headline_cover": f"{topic[:18].upper()}\nMUDA\nTUDO",
+        "sub_cover": f"A estratégia que está gerando resultados reais com {topic}.",
+        "cover_topics": ["Método", "Resultado", "Suporte", "Garantia", "Acesso", "Comunidade"],
+        "slides": [
+            {"aida": "ATENÇÃO",
+             "headline": "Você já tentou\nde tudo e não\nconseguiu?",
+             "sub": f"A maioria falha porque não tem o método certo para {topic}.",
+             "stat": "73%",
+             "stat_label": "das pessoas erram por falta de estratégia"},
+            {"aida": "INTERESSE",
+             "headline": "Existe um caminho\nmais rápido\npara chegar lá",
+             "sub": "Com a abordagem certa, os resultados chegam muito mais rápido.",
+             "stat": "+5.000",
+             "stat_label": "pessoas já transformaram seus resultados"},
+            {"aida": "DESEJO",
+             "headline": "Imagine ter\nos resultados\nque você quer",
+             "sub": "Mais liberdade, mais retorno, mais confiança — tudo isso está ao seu alcance.",
+             "stat": "30 dias",
+             "stat_label": "para ver os primeiros resultados"},
+            {"aida": "DESEJO",
+             "headline": "Por que isso\nfunciona quando\noutros falham",
+             "sub": "Baseado em dados reais, não em teoria. Método validado com resultados comprovados.",
+             "stat": "★★★★★",
+             "stat_label": "avaliação de clientes"},
+            {"aida": "AÇÃO",
+             "headline": "Não deixe\npara amanhã\no que muda hoje",
+             "sub": "Vagas limitadas. Aproveite agora.",
+             "stat": "",
+             "stat_label": "Oferta por tempo limitado",
+             "cta": cta or "Clique e saiba mais"},
+        ],
+        "ai_caption": (
+            f"🔥 {topic}\n\n"
+            "Você ainda está buscando resultados? A maioria das pessoas falha porque não tem o método certo.\n\n"
+            "✅ Método comprovado\n✅ Resultados rápidos\n✅ Suporte completo\n\n"
+            f"👉 {cta or 'Clique e saiba mais'}\n\n"
+            "📲 Siga @roquetrafegopagoo para mais!\n🔗 agenciaroque.com.br"
+        )
+    }
+
+
+def generate_ad_config_with_ai(topic, objective="", target="", cta=""):
+    """Usa Claude para gerar config AIDA de slides para Meta Ads."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        print("[AD GEN] Sem ANTHROPIC_API_KEY — usando template padrão.")
+        return _build_fallback_ad_config(topic, cta)
+
+    cta_final = cta or "Clique e saiba mais"
+    prompt = f"""Você é um especialista em copywriting para Meta Ads (Facebook/Instagram).
+Gere um carrossel de 5 slides de conteúdo + 1 capa usando o framework AIDA.
+
+TEMA/PRODUTO: {topic}
+OBJETIVO/CTA: {objective or cta_final}
+PÚBLICO-ALVO: {target or "Pessoas interessadas no tema"}
+
+Retorne APENAS um JSON válido, sem markdown, sem explicações:
+{{
+  "topic": "título curto do criativo (máx 60 chars)",
+  "headline_cover": "TÍTULO\\nEM 2-3\\nLINHAS",
+  "sub_cover": "Subtítulo da capa em uma frase",
+  "cover_topics": ["Benefício 1","Benefício 2","Benefício 3","Benefício 4","Benefício 5","Benefício 6"],
+  "slides": [
+    {{
+      "aida": "ATENÇÃO",
+      "headline": "Headline de\\n2-3 linhas\\nque choca",
+      "sub": "Texto de apoio que agita o problema em 1-2 frases curtas.",
+      "stat": "73%",
+      "stat_label": "das pessoas cometem esse erro"
+    }},
+    {{
+      "aida": "INTERESSE",
+      "headline": "Por que isso\\ndestrói seus\\nresultados",
+      "sub": "Explica a causa raiz do problema e por que a solução é relevante.",
+      "stat": "+5.000",
+      "stat_label": "já usam esse método"
+    }},
+    {{
+      "aida": "DESEJO",
+      "headline": "O que você\\nconquista\\ncom isso",
+      "sub": "Benefícios concretos e o resultado que o público vai ter.",
+      "stat": "30 dias",
+      "stat_label": "para ver resultados reais"
+    }},
+    {{
+      "aida": "DESEJO",
+      "headline": "Por que funciona\\nquando outros\\nmétodos falham",
+      "sub": "Diferencial único — o que torna este produto ou serviço diferente.",
+      "stat": "★★★★★",
+      "stat_label": "avaliação de clientes"
+    }},
+    {{
+      "aida": "AÇÃO",
+      "headline": "Não perca\\nessa\\noportunidade",
+      "sub": "Urgência e benefício final. Por que agir agora.",
+      "stat": "",
+      "stat_label": "Oferta por tempo limitado",
+      "cta": "{cta_final}"
+    }}
+  ],
+  "ai_caption": "Legenda persuasiva completa para Instagram/Facebook com emojis, máximo 2000 caracteres, em português BR."
+}}
+
+REGRAS: use \\n para quebras; headlines max 3 linhas; sub max 2 frases diretas; dados plausíveis; tudo em PT-BR."""
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=2200,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw = resp.content[0].text.strip()
+        raw = re.sub(r'^```(?:json)?\n?', '', raw)
+        raw = re.sub(r'\n?```$', '', raw)
+        return json.loads(raw)
+    except Exception as e:
+        print(f"[AD GEN] Erro IA: {e} — usando fallback.")
+        return _build_fallback_ad_config(topic, cta_final)
+
+
+def do_generate_ad(topic, objective="", target="", cta=""):
+    """Gera slides Meta Ads com IA e salva no banco."""
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = os.path.join(SLIDES_ROOT, f"ad_{ts}")
+    os.makedirs(out_dir, exist_ok=True)
+
+    cfg_data = generate_ad_config_with_ai(topic, objective, target, cta)
+    cfg = {**cfg_data,
+           "week": datetime.now().strftime("%d/%m/%Y"),
+           "output_dir": out_dir}
+    cfg_path = os.path.join(out_dir, "config.json")
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, ensure_ascii=False)
+
+    result = subprocess.run(
+        [sys.executable, "-X", "utf8", GENERATOR_METAADS, cfg_path],
+        capture_output=True, text=True, encoding="utf-8"
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr or result.stdout)
+
+    slides = sorted([
+        f for f in os.listdir(out_dir)
+        if f.startswith("slide_") and f.endswith(".png")
+    ])
+    topic_str = cfg_data.get("topic", topic)
+    with get_db() as conn:
+        cur = conn.execute(
+            "INSERT INTO posts (topic, slide_dir, status, platforms) VALUES (?,?,?,?)",
+            (f"[AD] {topic_str}", out_dir, "draft", '["instagram","facebook"]')
+        )
+        post_id = cur.lastrowid
+        conn.commit()
+
+    return post_id, slides, out_dir, cfg_data.get("ai_caption", "")
+
+
+@app.route("/api/generate-ad", methods=["POST"])
+def api_generate_ad():
+    data      = request.json or {}
+    topic     = (data.get("topic") or "").strip()
+    objective = (data.get("objective") or "").strip()
+    target    = (data.get("target") or "").strip()
+    cta       = (data.get("cta") or "").strip()
+
+    if not topic:
+        return jsonify({"error": "Informe o tema do criativo"}), 400
+
+    job_id = uuid.uuid4().hex[:10]
+    _jobs[job_id] = {"status": "running"}
+
+    def run():
+        try:
+            post_id, slides, slide_dir, ai_caption = do_generate_ad(topic, objective, target, cta)
+            _jobs[job_id] = {
+                "status":     "done",
+                "post_id":    post_id,
+                "slides":     slides,
+                "slide_dir":  slide_dir,
+                "topic":      topic,
+                "ai_caption": ai_caption,
+            }
+        except Exception as e:
+            _jobs[job_id] = {"status": "failed", "error": str(e)}
+
+    threading.Thread(target=run, daemon=True).start()
+    return jsonify({"job_id": job_id})
+
 
 if __name__ == "__main__":
     print("=" * 50)
